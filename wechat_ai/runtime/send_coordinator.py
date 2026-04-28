@@ -35,6 +35,7 @@ class SendCoordinator:
         sender: Callable[..., dict[str, Any] | None],
         confirmer: Callable[..., object] | None = None,
         precheck: Callable[..., dict[str, Any] | bool] | None = None,
+        on_uncertain: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
         ui_lock: UiActionLock | None = None,
         lock_timeout_seconds: float = 30.0,
     ) -> None:
@@ -42,6 +43,7 @@ class SendCoordinator:
         self.sender = sender
         self.confirmer = confirmer
         self.precheck = precheck
+        self.on_uncertain = on_uncertain
         self.ui_lock = ui_lock or UiActionLock()
         self.lock_timeout_seconds = lock_timeout_seconds
 
@@ -165,13 +167,13 @@ class SendCoordinator:
                 error_code="SEND_NOT_CONFIRMED",
                 error_message=str(confirmation_detail.get("reason", "")),
             )
-            self.store.mark_send_job(
+            updated_send_job = self.store.mark_send_job(
                 send_job_id,
                 status="SEND_UNCERTAIN",
                 lock_owner=None,
                 confirmation_result={"ok": False, "reason_code": "SEND_NOT_CONFIRMED", **confirmation_detail},
             )
-            return {
+            result = {
                 "status": "send_uncertain",
                 "send_job_id": send_job_id,
                 "sent": True,
@@ -179,6 +181,8 @@ class SendCoordinator:
                 "reason_code": "SEND_NOT_CONFIRMED",
                 "send_result": normalized_send_result,
             }
+            self._notify_uncertain(updated_send_job, result)
+            return result
         finally:
             self.ui_lock.release(send_job_id)
 
@@ -200,3 +204,11 @@ class SendCoordinator:
         if isinstance(result, dict):
             return bool(result.get("ok", result.get("confirmed", False))), {"confirmation": result, "confirmation_required": True}
         return bool(result), {"confirmation_required": True}
+
+    def _notify_uncertain(self, send_job: dict[str, Any], result: dict[str, Any]) -> None:
+        if self.on_uncertain is None:
+            return
+        try:
+            self.on_uncertain(send_job, result)
+        except Exception:
+            return

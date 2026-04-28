@@ -189,6 +189,41 @@ class SendCoordinatorTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_uncertain_send_invokes_callback_with_job_and_result_context(self) -> None:
+        from wechat_ai.runtime.send_coordinator import SendCoordinator
+        from wechat_ai.storage.runtime_state import RuntimeStateStore
+
+        temp_dir = _fresh_dir(".tmp_send_coordinator_uncertain_callback")
+        try:
+            store = RuntimeStateStore(temp_dir / "runtime_state.sqlite3")
+            callbacks: list[dict[str, object]] = []
+
+            coordinator = SendCoordinator(
+                store=store,
+                sender=lambda **kwargs: {"sent": True, "transport_id": "tx-1"},
+                confirmer=lambda **kwargs: False,
+                precheck=lambda **kwargs: {"ok": True},
+                on_uncertain=lambda send_job, result: callbacks.append(
+                    {"send_job": dict(send_job), "result": dict(result)}
+                ),
+            )
+
+            result = coordinator.send_reply(
+                conversation_id="friend:Alice",
+                target_title="Alice",
+                text="hi",
+                reply_job_id="reply-1",
+            )
+
+            self.assertEqual(result["status"], "send_uncertain")
+            self.assertEqual(len(callbacks), 1)
+            self.assertEqual(callbacks[0]["send_job"]["conversation_id"], "friend:Alice")
+            self.assertEqual(callbacks[0]["send_job"]["send_job_id"], result["send_job_id"])
+            self.assertEqual(callbacks[0]["result"]["status"], "send_uncertain")
+            self.assertEqual(callbacks[0]["result"]["send_job_id"], result["send_job_id"])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_precheck_failure_blocks_send_before_sender_runs(self) -> None:
         from wechat_ai.runtime.send_coordinator import SendCoordinator
         from wechat_ai.storage.runtime_state import RuntimeStateStore

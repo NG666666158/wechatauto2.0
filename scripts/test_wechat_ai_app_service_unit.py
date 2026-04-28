@@ -434,6 +434,33 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_real_send_enabled_blocks_fake_embedding_knowledge_index_before_sender(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_fake_embedding_block")
+        try:
+            knowledge_dir = temp_dir / "knowledge"
+            knowledge_dir.mkdir(parents=True, exist_ok=True)
+            (knowledge_dir / "local_knowledge_index.json").write_text(
+                '{"embedding_provider":"FakeEmbeddings","chunks":[{"text":"refund policy","vector":[1.0],"metadata":{"doc_id":"faq"}}]}',
+                encoding="utf-8",
+            )
+            sender = FakeReplySender()
+            service = DesktopAppService(data_root=temp_dir, reply_sender=sender)
+            service.update_settings({"real_send_enabled": True})
+            service.record_conversation_message("friend:alice", sender="Alice", text="hello", direction="incoming")
+
+            result = service.send_reply("friend:alice", "refund answer")
+            search_results = service.search_knowledge("refund", limit=1)
+
+            self.assertEqual(result["status"], "blocked")
+            self.assertFalse(result["allowed"])
+            self.assertEqual(result["reason_code"], "UNTRUSTED_FAKE_EMBEDDINGS")
+            self.assertEqual(sender.sent, [])
+            self.assertEqual(len(search_results), 1)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_send_reply_confirms_sent_message_before_recording_outgoing_message(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 
@@ -502,11 +529,13 @@ class DesktopAppServiceTests(TestCase):
             uncertain_jobs = service.list_uncertain_send_jobs()
 
             self.assertEqual(result["status"], "send_uncertain")
-            self.assertEqual(duplicate["status"], "send_uncertain")
+            self.assertEqual(duplicate["status"], "blocked")
+            self.assertEqual(duplicate["reason_code"], "CONVERSATION_PAUSED")
             self.assertEqual(len(sender.sent), 1)
             self.assertEqual(len(uncertain_jobs), 1)
             self.assertEqual(uncertain_jobs[0]["conversation_id"], "friend:alice")
             self.assertEqual(uncertain_jobs[0]["content"], "not visible yet")
+            self.assertTrue(service.get_conversation_control("friend:alice")["paused"])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

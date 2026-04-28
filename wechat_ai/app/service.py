@@ -18,7 +18,9 @@ from wechat_ai.logging_utils import sanitize_text, tail_jsonl_events, utc_timest
 from wechat_ai.models import Message
 from wechat_ai.orchestration.prompt_builder import PromptBuilder
 from wechat_ai.rag.embeddings import FakeEmbeddings
-from wechat_ai.rag.retriever import LocalIndexRetriever
+from wechat_ai.rag.hybrid_retriever import HybridRetriever
+from wechat_ai.rag.keyword_retriever import KeywordRetriever
+from wechat_ai.rag.retriever import LocalIndexRetriever, index_uses_fake_embeddings
 from wechat_ai.runtime import SendCoordinator
 from wechat_ai.safety import SafetyPolicyEngine
 from wechat_ai.storage import RuntimeStateStore
@@ -727,11 +729,24 @@ class DesktopAppService:
                 "reason": str(preflight["reason"]),
             }
         cleaned_text = str(text).strip()
+        settings = self.get_settings()
+        if settings.real_send_enabled:
+            fake_embeddings_precheck = self._precheck_trusted_knowledge_embeddings()
+            if not fake_embeddings_precheck["ok"]:
+                return {
+                    "status": "blocked",
+                    "action": "send_reply",
+                    "allowed": False,
+                    "conversation_id": conversation_id,
+                    "text": cleaned_text,
+                    "reason_code": str(fake_embeddings_precheck["reason_code"]),
+                    "reason": str(fake_embeddings_precheck["reason"]),
+                }
         sender = self.reply_sender
-        if sender is None and self.get_settings().real_send_enabled:
+        if sender is None and settings.real_send_enabled:
             sender = PyWeixinReplySender()
         send_confirmer = self.send_confirmer
-        if send_confirmer is None and sender is not None and self.get_settings().real_send_enabled:
+        if send_confirmer is None and sender is not None and settings.real_send_enabled:
             send_confirmer = PyWeixinVisualSendConfirmer(probe=self._get_wechat_window_probe())
         if sender is not None:
             normalized_id = str(conversation_id).strip()
@@ -766,6 +781,10 @@ class DesktopAppService:
                     )
                 ),
                 precheck=lambda **kwargs: {"ok": True},
+                on_uncertain=lambda send_job, result: self.update_conversation_control(
+                    str(send_job.get("conversation_id") or normalized_id),
+                    {"paused": True},
+                ),
             )
             coordinated = coordinator.send_reply(
                 conversation_id=normalized_id,
@@ -986,7 +1005,7 @@ class DesktopAppService:
         status = self.knowledge_importer.get_status()
         if not status.ready:
             return []
-        retriever = LocalIndexRetriever(index_path=Path(status.index_path), embeddings=FakeEmbeddings())
+        retriever = _build_hybrid_retriever(Path(status.index_path))
         results: list[dict[str, Any]] = []
         for chunk in retriever.retrieve(query, limit=limit):
             payload = asdict(chunk)
@@ -1002,6 +1021,18 @@ class DesktopAppService:
             payload["chunk_id"] = chunk_id
             results.append(payload)
         return results
+
+    def _precheck_trusted_knowledge_embeddings(self) -> dict[str, object]:
+        status = self.knowledge_importer.get_status()
+        if not status.ready:
+            return {"ok": True}
+        if index_uses_fake_embeddings(Path(status.index_path)):
+            return {
+                "ok": False,
+                "reason_code": "UNTRUSTED_FAKE_EMBEDDINGS",
+                "reason": "knowledge index uses FakeEmbeddings and cannot be trusted for real sending",
+            }
+        return {"ok": True}
 
     def get_knowledge_status(self) -> dict[str, Any]:
         return asdict(self.knowledge_importer.get_status())
@@ -1325,6 +1356,13 @@ def _blocked_send(reason_code: str, reason: str) -> dict[str, object]:
         "reason_code": reason_code,
         "reason": reason,
     }
+
+
+def _build_hybrid_retriever(index_path: Path) -> HybridRetriever:
+    return HybridRetriever(
+        dense_retriever=LocalIndexRetriever(index_path=index_path, embeddings=FakeEmbeddings()),
+        keyword_retriever=KeywordRetriever(index_path=index_path),
+    )
 
 
 def _windows_pid_exists(pid: int | None) -> bool:

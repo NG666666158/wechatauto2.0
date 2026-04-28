@@ -2,12 +2,13 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { BookOpen, Home, MessageSquare, Settings, User } from "lucide-react"
+import { BookOpen, Home, ListTodo, MessageSquare, Settings, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { label: "\u9996\u9875", href: "/", icon: Home },
   { label: "\u6d88\u606f", href: "/messages", icon: MessageSquare },
+  { label: "\u5f85\u5904\u7406", href: "/pending", icon: ListTodo },
   { label: "\u5ba2\u6237", href: "/customers", icon: User },
   { label: "\u77e5\u8bc6\u5e93", href: "/knowledge", icon: BookOpen },
   { label: "\u8bbe\u7f6e", href: "/settings", icon: Settings },

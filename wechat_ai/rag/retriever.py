@@ -37,17 +37,38 @@ class LocalIndexRetriever:
         return self.reranker.rerank(query, ranked_chunks[:limit])
 
     def _load_chunks(self) -> list[dict[str, Any]]:
-        payload = json.loads(self.index_path.read_text(encoding="utf-8"))
-        chunks = payload.get("chunks", [])
-        if not isinstance(chunks, list):
-            raise ValueError("index payload must contain a 'chunks' list")
-        return [chunk for chunk in chunks if isinstance(chunk, dict)]
+        return load_index_chunks(self.index_path)
 
 
 def _normalize_metadata(metadata: object) -> dict[str, str]:
     if not isinstance(metadata, dict):
         return {}
     return {str(key): str(value) for key, value in metadata.items()}
+
+
+def load_index_payload(index_path: Path) -> dict[str, Any]:
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("index payload must be a JSON object")
+    return payload
+
+
+def load_index_chunks(index_path: Path) -> list[dict[str, Any]]:
+    payload = load_index_payload(index_path)
+    chunks = payload.get("chunks", [])
+    if not isinstance(chunks, list):
+        raise ValueError("index payload must contain a 'chunks' list")
+    return [chunk for chunk in chunks if isinstance(chunk, dict)]
+
+
+def index_uses_fake_embeddings(index_path: Path) -> bool:
+    if not index_path.exists():
+        return False
+    try:
+        payload = load_index_payload(index_path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    return str(payload.get("embedding_provider") or "").strip() == "FakeEmbeddings"
 
 
 def _cosine_similarity(left: list[float], right: list[float]) -> float:

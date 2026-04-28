@@ -515,6 +515,11 @@ class GlobalAutoReplyTests(unittest.TestCase):
         unconfirmed_events = [event for event in logged_events if event["event_type"] == "message_send_uncertain"]
         self.assertEqual(len(unconfirmed_events), 1)
         self.assertEqual(unconfirmed_events[0]["chat_id"], "Alice")
+        paused_events = [event for event in logged_events if event["event_type"] == "conversation_paused_by_send_uncertain"]
+        self.assertEqual(len(paused_events), 1)
+        self.assertEqual(paused_events[0]["chat_id"], "Alice")
+        self.assertEqual(paused_events[0]["conversation_id"], "friend:Alice")
+        self.assertEqual(paused_events[0]["send_job_id"], unconfirmed_events[0]["send_job_id"])
         self.assertEqual(len(app.runtime_state_store.list_uncertain_send_jobs()), 1)
         detail = app.conversation_store.get_record("friend:Alice")
         self.assertEqual(detail["messages"], [])

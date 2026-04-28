@@ -13,9 +13,11 @@ import type {
   KnowledgeImportResult,
   KnowledgeSearchResult,
   PrivacyPolicy,
+  ReplyJob,
   ReplySuggestion,
   RuntimeAction,
   RuntimeStatus,
+  SendJob,
   SendReplyResult,
   SelfIdentity,
   SelfIdentityPatch,
@@ -39,6 +41,9 @@ async function assertApiClientContract() {
   const conversations: ApiResponse<ConversationListItem[]> = await apiClient.listConversations()
   const conversation: ApiResponse<ConversationDetail> = await apiClient.getConversation("friend:zhang")
   const control: ApiResponse<ConversationControl> = await apiClient.getConversationControl("friend:zhang")
+  const replyJobs: ApiResponse<ReplyJob[]> = await apiClient.listReplyJobs(undefined, 20)
+  const sendJobs: ApiResponse<SendJob[]> = await apiClient.listSendJobs("SEND_UNCERTAIN", 20)
+  const uncertainSendJobs: ApiResponse<SendJob[]> = await apiClient.listUncertainSendJobs(20)
   const suggestion: ApiResponse<ReplySuggestion> = await apiClient.suggestReply("friend:zhang", "请介绍一下试用政策")
   const sent: ApiResponse<SendReplyResult> = await apiClient.sendConversationReply("friend:zhang", "您好，稍后为您介绍。")
   const updatedControl: ApiResponse<ConversationControl> = await apiClient.updateConversationControl("friend:zhang", {
@@ -81,6 +86,9 @@ async function assertApiClientContract() {
     conversations,
     conversation,
     control,
+    replyJobs,
+    sendJobs,
+    uncertainSendJobs,
     suggestion,
     sent,
     updatedControl,

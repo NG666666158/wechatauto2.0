@@ -236,6 +236,37 @@ export type ReplySuggestion = {
   status: string
 }
 
+export type ReplyJob = {
+  reply_job_id: string
+  conversation_id: string
+  trigger_event_ids?: string[] | string
+  input_text: string
+  context_snapshot_id?: string | null
+  status: string
+  draft_reply?: string | null
+  risk_level?: string
+  need_human_review?: boolean | number
+  idempotency_key?: string
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type SendJob = {
+  send_job_id: string
+  reply_job_id?: string
+  conversation_id: string
+  target_title?: string
+  content: string
+  status: string
+  idempotency_key?: string
+  lock_owner?: string | null
+  before_screenshot?: string | null
+  after_screenshot?: string | null
+  confirmation_result?: Record<string, unknown> | string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
 export type SendReplyResult = {
   status: string
   allowed: boolean
@@ -323,6 +354,17 @@ function patch<T>(path: string, body: unknown) {
   })
 }
 
+function withQuery(path: string, params: Record<string, string | number | undefined>) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) {
+      query.set(key, String(value))
+    }
+  }
+  const queryString = query.toString()
+  return queryString ? `${path}?${queryString}` : path
+}
+
 export const apiClient = {
   getDashboardSummary: () => request<DashboardSummary>("/dashboard/summary"),
   getRuntimeStatus: () => request<RuntimeStatus>("/runtime/status"),
@@ -353,6 +395,12 @@ export const apiClient = {
     request<ConversationControl>(`/controls/conversations/${encodeURIComponent(conversationId)}`),
   updateConversationControl: (conversationId: string, patchBody: ConversationControlPatch) =>
     patch<ConversationControl>(`/controls/conversations/${encodeURIComponent(conversationId)}`, patchBody),
+  listReplyJobs: (status?: string, limit = 100) =>
+    request<ReplyJob[]>(withQuery("/jobs/reply", { status, limit })),
+  listSendJobs: (status?: string, limit = 100) =>
+    request<SendJob[]>(withQuery("/jobs/send", { status, limit })),
+  listUncertainSendJobs: (limit = 100) =>
+    request<SendJob[]>(withQuery("/jobs/send-uncertain", { limit })),
   listCustomers: () => request<Customer[]>("/customers"),
   getCustomer: (customerId: string) => request<Customer>(`/customers/${encodeURIComponent(customerId)}`),
   listIdentityDrafts: () => request<IdentityDraft[]>("/identity/drafts"),

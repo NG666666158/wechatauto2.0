@@ -32,7 +32,9 @@ from . import paths
 from .paths import KNOWLEDGE_DIR, LOGS_DIR, MEMORY_DIR, bootstrap_data_dirs
 from .profile.profile_store import ProfileStore
 from .rag.embeddings import FakeEmbeddings
-from .rag.retriever import LocalIndexRetriever
+from .rag.hybrid_retriever import HybridRetriever
+from .rag.keyword_retriever import KeywordRetriever
+from .rag.retriever import LocalIndexRetriever, index_uses_fake_embeddings
 from .reply_scheduler import PendingReplyBatch, ReplyScheduler
 from .runtime import SendCoordinator
 from .storage import RuntimeStateStore
@@ -180,7 +182,21 @@ def _build_retriever():
     index_path = KNOWLEDGE_DIR / "local_knowledge_index.json"
     if not index_path.exists():
         return None
-    return LocalIndexRetriever(index_path=index_path, embeddings=FakeEmbeddings())
+    return HybridRetriever(
+        dense_retriever=LocalIndexRetriever(index_path=index_path, embeddings=FakeEmbeddings()),
+        keyword_retriever=KeywordRetriever(index_path=index_path),
+    )
+
+
+def _precheck_trusted_knowledge_embeddings() -> dict[str, object]:
+    index_path = KNOWLEDGE_DIR / "local_knowledge_index.json"
+    if index_path.exists() and index_uses_fake_embeddings(index_path):
+        return {
+            "ok": False,
+            "reason_code": "UNTRUSTED_FAKE_EMBEDDINGS",
+            "reason": "knowledge index uses FakeEmbeddings and cannot be trusted for real sending",
+        }
+    return {"ok": True}
 
 
 def _build_memory_store():
@@ -271,6 +287,7 @@ class WeChatAIApp:
     runtime_send_sequence: int = 0
     send_confirmer: Any | None = None
     stop_event: Any | None = None
+    enforce_trusted_knowledge_for_sending: bool = False
 
     @classmethod
     def from_env(cls) -> "WeChatAIApp":
@@ -308,6 +325,10 @@ class WeChatAIApp:
             fallback_reply=reply.fallback_reply,
             mention_names=mention_names,
             send_confirmer=send_confirmer,
+            enforce_trusted_knowledge_for_sending=str(
+                os.getenv("WECHATAUTO_ENFORCE_TRUSTED_KNOWLEDGE_FOR_SENDING", "1")
+            ).strip().lower()
+            not in {"0", "false", "no", "off"},
         )
 
     def _debug(self, message: str) -> None:
@@ -926,7 +947,11 @@ class WeChatAIApp:
                     send_result=kwargs.get("send_result") if isinstance(kwargs.get("send_result"), dict) else {"sent": True},
                 )
             ),
-            precheck=lambda **kwargs: {"ok": True},
+            precheck=(
+                lambda **kwargs: _precheck_trusted_knowledge_embeddings()
+                if self.enforce_trusted_knowledge_for_sending
+                else {"ok": True}
+            ),
         )
         coordinated = coordinator.send_reply(
             conversation_id=conversation_id,
@@ -944,6 +969,14 @@ class WeChatAIApp:
                 chat_id=session_name,
                 chat_type="group" if is_group else "friend",
                 reply_preview=reply,
+                send_job_id=coordinated.get("send_job_id"),
+                reason_code=coordinated.get("reason_code", "SEND_NOT_CONFIRMED"),
+            )
+            self._log_event(
+                "conversation_paused_by_send_uncertain",
+                chat_id=session_name,
+                chat_type="group" if is_group else "friend",
+                conversation_id=conversation_id,
                 send_job_id=coordinated.get("send_job_id"),
                 reason_code=coordinated.get("reason_code", "SEND_NOT_CONFIRMED"),
             )

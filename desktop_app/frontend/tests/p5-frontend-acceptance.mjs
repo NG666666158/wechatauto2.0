@@ -11,10 +11,21 @@ const checks = [
       [
         "app/page.tsx",
         "app/messages/page.tsx",
+        "app/pending/page.tsx",
         "app/customers/page.tsx",
         "app/knowledge/page.tsx",
         "app/settings/page.tsx",
       ].every((file) => existsSync(join(root, file))),
+  },
+  {
+    name: "sidebar exposes pending between messages and customers",
+    run: () => {
+      const source = read("components/app-sidebar.tsx")
+      const messages = source.indexOf('href: "/messages"')
+      const pending = source.indexOf('href: "/pending"')
+      const customers = source.indexOf('href: "/customers"')
+      return messages > -1 && pending > messages && customers > pending
+    },
   },
   {
     name: "sidebar exposes knowledge between customers and settings",
@@ -35,6 +46,9 @@ const checks = [
         "getSettings",
         "listConversations",
         "sendConversationReply",
+        "listReplyJobs",
+        "listSendJobs",
+        "listUncertainSendJobs",
         "listCustomers",
         "updateGlobalSelfIdentity",
         "getKnowledgeStatus",
@@ -47,8 +61,21 @@ const checks = [
   {
     name: "pages render backend-offline error states",
     run: () =>
-      ["app/page.tsx", "app/messages/page.tsx", "app/customers/page.tsx", "app/knowledge/page.tsx", "app/settings/page.tsx"]
+      ["app/page.tsx", "app/messages/page.tsx", "app/pending/page.tsx", "app/customers/page.tsx", "app/knowledge/page.tsx", "app/settings/page.tsx"]
         .every((file) => read(file).includes("ErrorState")),
+  },
+  {
+    name: "pending page shows reply review and uncertain send queues",
+    run: () => {
+      const source = read("app/pending/page.tsx")
+      return (
+        source.includes("listReplyJobs") &&
+        source.includes("listUncertainSendJobs") &&
+        source.includes("updateConversationControl") &&
+        source.includes("SEND_UNCERTAIN") &&
+        !source.includes("sendConversationReply")
+      )
+    },
   },
   {
     name: "dangerous message send requires confirmation",
