@@ -121,7 +121,12 @@ def inspect_source_contracts() -> dict[str, Any]:
 def _http_json(base_url: str, method: str, path: str, *, timeout_seconds: float) -> dict[str, Any]:
     encoded_path = quote(path.lstrip("/"), safe="/?=&:%")
     url = f"{base_url.rstrip('/')}/{encoded_path}"
-    request = Request(url, method=method)
+    body = None
+    headers: dict[str, str] = {}
+    if method.upper() in {"POST", "PATCH", "PUT"}:
+        body = b"{}"
+        headers["Content-Type"] = "application/json"
+    request = Request(url, data=body, headers=headers, method=method)
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
             body = response.read().decode("utf-8", errors="replace")

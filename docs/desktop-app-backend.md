@@ -21,6 +21,35 @@ powershell.exe -ExecutionPolicy Bypass -File scripts\dev_start.ps1
 /api/v1
 ```
 
+## 2026-04-28 接口状态更新
+
+稳定性与一致性增强 Round 3-20 后，桌面后端已经不只是页面占位层，而是承接了发送一致性、人工审核、安全策略、SEND_UNCERTAIN 处理和 RAG 可信化的本地控制面。
+
+新增或需要前端重点使用的接口：
+
+- `GET /api/v1/jobs/reply`
+- `POST /api/v1/jobs/reply/{reply_job_id}/approve`
+- `POST /api/v1/jobs/reply/{reply_job_id}/cancel`
+- `GET /api/v1/jobs/send`
+- `GET /api/v1/jobs/send-uncertain`
+- `GET /api/v1/jobs/send-uncertain/metrics`
+- `GET /api/v1/jobs/send/{send_job_id}/attempts`
+- `POST /api/v1/jobs/send/{send_job_id}/resolve`
+- `GET /api/v1/settings/safety-policy/export`
+- `POST /api/v1/settings/safety-policy/import`
+- `POST /api/v1/settings/safety-policy/restore-defaults`
+- `GET /api/v1/settings/safety-policy/audit`
+- `GET /api/v1/knowledge/trust-diagnostics`
+- `POST /api/v1/knowledge/trusted-rebuild`
+- `GET /api/v1/debug/knowledge-acceptance/history`
+
+关键约束：
+
+- 前端仍不直接操控微信 UI。
+- 人工审核批准后的真实发送必须继续走 `SendCoordinator`。
+- `SEND_UNCERTAIN` 不允许自动重发，只能由人工确认、标记失败或恢复会话。
+- fake / untrusted RAG 不允许直接进入真实自动发送链路。
+
 统一响应结构：
 
 ```json
