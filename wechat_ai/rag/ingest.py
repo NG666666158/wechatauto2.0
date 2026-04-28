@@ -6,7 +6,7 @@ from typing import Iterable
 
 from wechat_ai import paths
 from wechat_ai.rag.chunker import Chunker
-from wechat_ai.rag.embeddings import FakeEmbeddings
+from wechat_ai.rag.embeddings import BaseEmbeddings, FakeEmbeddings, embedding_provider_info
 from wechat_ai.rag.knowledge_store import KnowledgeDocument, normalize_document
 
 
@@ -57,6 +57,7 @@ def build_knowledge_index(
     chunk_size: int,
     overlap: int,
     source_paths: Iterable[Path] | None = None,
+    embeddings: BaseEmbeddings | None = None,
 ) -> dict[str, object]:
     resolved_knowledge_dir = Path(knowledge_dir or paths.KNOWLEDGE_DIR)
     resolved_knowledge_dir.mkdir(parents=True, exist_ok=True)
@@ -71,14 +72,15 @@ def build_knowledge_index(
     for document in documents:
         chunks.extend(chunker.chunk_document(document))
 
-    embeddings = FakeEmbeddings()
-    vectors = embeddings.embed_documents([chunk["text"] for chunk in chunks]) if chunks else []
+    resolved_embeddings = embeddings or FakeEmbeddings()
+    provider_info = embedding_provider_info(resolved_embeddings)
+    vectors = resolved_embeddings.embed_documents([chunk["text"] for chunk in chunks]) if chunks else []
 
     payload = {
         "schema_version": 1,
         "knowledge_dir": str(resolved_knowledge_dir),
-        "embedding_provider": embeddings.__class__.__name__,
-        "embedding_trusted": False,
+        "embedding_provider": provider_info.provider,
+        "embedding_trusted": provider_info.trusted,
         "chunk_size": chunk_size,
         "overlap": overlap,
         "documents_loaded": len(documents),
@@ -105,8 +107,8 @@ def build_knowledge_index(
         "chunks_created": len(chunks),
         "index_path": resolved_index_path,
         "knowledge_dir": resolved_knowledge_dir,
-        "embedding_provider": embeddings.__class__.__name__,
-        "embedding_trusted": False,
+        "embedding_provider": provider_info.provider,
+        "embedding_trusted": provider_info.trusted,
     }
 
 

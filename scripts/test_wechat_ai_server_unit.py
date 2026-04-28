@@ -116,6 +116,8 @@ class FakeDesktopService:
                 "ui_ready": False,
             },
         }
+        self.last_approve_request: dict[str, object] = {}
+        self.last_cancel_request: dict[str, object] = {}
 
     def get_app_status(self) -> FakeAppStatus:
         return FakeAppStatus(daemon_state=str(self.daemon_state["state"]))
@@ -174,20 +176,47 @@ class FakeDesktopService:
         del limit
         return list(self.uncertain_send_jobs)
 
-    def approve_reply_job(self, reply_job_id: str, *, draft_reply: str | None = None) -> dict[str, object]:
+    def approve_reply_job(
+        self,
+        reply_job_id: str,
+        *,
+        draft_reply: str | None = None,
+        reason: str | None = None,
+        reviewed_by: str = "operator",
+    ) -> dict[str, object]:
+        self.last_approve_request = {
+            "reply_job_id": reply_job_id,
+            "draft_reply": draft_reply,
+            "reason": reason,
+            "reviewed_by": reviewed_by,
+        }
         for job in self.reply_jobs:
             if job["reply_job_id"] == reply_job_id:
                 job["status"] = "APPROVED"
                 if draft_reply is not None:
                     job["draft_reply"] = draft_reply
+                job["review_reason"] = reason or ""
+                job["reviewed_by"] = reviewed_by
                 return dict(job)
         raise KeyError(reply_job_id)
 
-    def cancel_reply_job(self, reply_job_id: str, *, reason: str | None = None) -> dict[str, object]:
-        del reason
+    def cancel_reply_job(
+        self,
+        reply_job_id: str,
+        *,
+        reason: str | None = None,
+        reviewed_by: str = "operator",
+    ) -> dict[str, object]:
+        self.last_cancel_request = {
+            "reply_job_id": reply_job_id,
+            "reason": reason,
+            "reviewed_by": reviewed_by,
+        }
         for job in self.reply_jobs:
             if job["reply_job_id"] == reply_job_id:
                 job["status"] = "CANCELLED"
+                job["review_reason"] = reason or ""
+                job["reviewed_by"] = reviewed_by
                 return dict(job)
         raise KeyError(reply_job_id)
 
@@ -197,6 +226,7 @@ class FakeDesktopService:
         *,
         resolution: str,
         reason: str | None = None,
+        reviewed_by: str = "operator",
     ) -> dict[str, object]:
         for job in self.uncertain_send_jobs:
             if job["send_job_id"] == send_job_id:
@@ -205,6 +235,8 @@ class FakeDesktopService:
                     "source": "manual",
                     "resolution": resolution,
                     "reason": reason or "",
+                    "reviewed_by": reviewed_by,
+                    "operator": reviewed_by,
                 }
                 return dict(job)
         raise KeyError(send_job_id)
@@ -1159,12 +1191,12 @@ def test_runtime_jobs_manual_actions_update_reply_and_uncertain_send_jobs() -> N
 
     approved = client.post(
         "/api/v1/jobs/reply/reply_001/approve",
-        json={"draft_reply": "new draft"},
+        json={"draft_reply": "new draft", "reason": "approved after review", "reviewed_by": "lead-operator"},
         headers={"x-trace-id": "trace-approve"},
     )
     cancelled = client.post(
         "/api/v1/jobs/reply/reply_001/cancel",
-        json={"reason": "operator cancelled"},
+        json={"reason": "operator cancelled", "reviewed_by": "qa-operator"},
         headers={"x-trace-id": "trace-cancel"},
     )
     resolved = client.post(
@@ -1178,7 +1210,22 @@ def test_runtime_jobs_manual_actions_update_reply_and_uncertain_send_jobs() -> N
     assert approved.json()["trace_id"] == "trace-approve"
     assert approved.json()["data"]["status"] == "APPROVED"
     assert approved.json()["data"]["draft_reply"] == "new draft"
+    assert approved.json()["data"]["review_reason"] == "approved after review"
+    assert approved.json()["data"]["reviewed_by"] == "lead-operator"
+    assert service.last_approve_request == {
+        "reply_job_id": "reply_001",
+        "draft_reply": "new draft",
+        "reason": "approved after review",
+        "reviewed_by": "lead-operator",
+    }
     assert cancelled.json()["data"]["status"] == "CANCELLED"
+    assert cancelled.json()["data"]["review_reason"] == "operator cancelled"
+    assert cancelled.json()["data"]["reviewed_by"] == "qa-operator"
+    assert service.last_cancel_request == {
+        "reply_job_id": "reply_001",
+        "reason": "operator cancelled",
+        "reviewed_by": "qa-operator",
+    }
     assert resolved.json()["data"]["status"] == "SENT_CONFIRMED"
     assert resolved.json()["data"]["confirmation_result"]["source"] == "manual"
     assert resolved.json()["data"]["confirmation_result"]["resolution"] == "confirmed"

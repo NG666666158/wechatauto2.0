@@ -429,13 +429,28 @@ class DesktopAppServiceTests(TestCase):
                 need_human_review=True,
             )
 
-            approved = service.approve_reply_job(reply["reply_job_id"], draft_reply="new draft")
-            cancelled = service.cancel_reply_job(reply["reply_job_id"], reason="operator cancelled")
+            approved = service.approve_reply_job(
+                reply["reply_job_id"],
+                draft_reply="new draft",
+                reason="approved by QA",
+                reviewed_by="qa-operator",
+            )
+            cancelled = service.cancel_reply_job(
+                reply["reply_job_id"],
+                reason="operator cancelled",
+                reviewed_by="ops-operator",
+            )
 
             self.assertEqual(approved["status"], "APPROVED")
             self.assertEqual(approved["draft_reply"], "new draft")
+            self.assertEqual(approved["review_reason"], "approved by QA")
+            self.assertEqual(approved["reviewed_by"], "qa-operator")
+            self.assertTrue(approved["reviewed_at"])
             self.assertEqual(cancelled["status"], "CANCELLED")
             self.assertEqual(cancelled["draft_reply"], "new draft")
+            self.assertEqual(cancelled["review_reason"], "operator cancelled")
+            self.assertEqual(cancelled["reviewed_by"], "ops-operator")
+            self.assertTrue(cancelled["reviewed_at"])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -457,12 +472,15 @@ class DesktopAppServiceTests(TestCase):
                 send["send_job_id"],
                 resolution="failed",
                 reason="not visible after manual check",
+                reviewed_by="support-lead",
             )
 
             self.assertEqual(failed["status"], "SEND_FAILED")
             self.assertEqual(failed["confirmation_result"]["source"], "manual")
             self.assertEqual(failed["confirmation_result"]["resolution"], "failed")
             self.assertEqual(failed["confirmation_result"]["reason"], "not visible after manual check")
+            self.assertEqual(failed["confirmation_result"]["reviewed_by"], "support-lead")
+            self.assertEqual(failed["confirmation_result"]["operator"], "support-lead")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

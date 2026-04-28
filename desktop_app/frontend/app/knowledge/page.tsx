@@ -245,11 +245,16 @@ function StatusPanel({ status, onRefresh }: { status: KnowledgeStatus | null; on
           刷新
         </button>
       </div>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         <Metric label="索引状态" value={status?.ready ? "已就绪" : "未就绪"} accent={status?.ready ? "green" : "orange"} />
         <Metric label="文档数" value={String(status?.documents_loaded ?? 0)} />
         <Metric label="片段数" value={String(status?.chunks_created ?? 0)} />
         <Metric label="向量模型" value={status?.embedding_provider || "本地检索"} />
+        <Metric
+          label="Embedding trust"
+          value={formatEmbeddingTrust(status?.embedding_trusted)}
+          accent={status?.embedding_trusted === false ? "orange" : status?.embedding_trusted ? "green" : undefined}
+        />
       </div>
       <div className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-500">
         <div>索引路径：{status?.index_path || "暂无"}</div>
@@ -258,6 +263,12 @@ function StatusPanel({ status, onRefresh }: { status: KnowledgeStatus | null; on
       </div>
     </div>
   )
+}
+
+function formatEmbeddingTrust(value: boolean | null | undefined) {
+  if (value === true) return "trusted"
+  if (value === false) return "untrusted - review"
+  return "unknown"
 }
 
 function Metric({ label, value, accent }: { label: string; value: string; accent?: "green" | "orange" }) {

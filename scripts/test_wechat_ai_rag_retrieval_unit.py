@@ -13,8 +13,10 @@ TMP_ROOT.mkdir(exist_ok=True)
 
 
 from wechat_ai import RetrievedChunk  # type: ignore  # noqa: E402
-from wechat_ai.rag.embeddings import BaseEmbeddings  # type: ignore  # noqa: E402
+from wechat_ai.rag.embeddings import BaseEmbeddings, FakeEmbeddings  # type: ignore  # noqa: E402
 from wechat_ai.rag.reranker import NoOpReranker  # type: ignore  # noqa: E402
+from wechat_ai.rag.ingest import build_knowledge_index  # type: ignore  # noqa: E402
+from wechat_ai.rag.embeddings import TrustedLocalEmbeddings  # type: ignore  # noqa: E402
 from wechat_ai.rag.retriever import (  # type: ignore  # noqa: E402
     LocalIndexRetriever,
     index_embedding_provider,
@@ -181,6 +183,68 @@ class LocalIndexRetrieverTests(unittest.TestCase):
         self.assertEqual(index_embedding_provider(index_path), "TrustedFoo")
         self.assertFalse(index_uses_fake_embeddings(index_path))
         self.assertFalse(index_has_trusted_embeddings(index_path))
+
+    def test_build_knowledge_index_defaults_to_fake_untrusted_embeddings(self) -> None:
+        temp_dir = self._make_temp_dir()
+        knowledge_dir = temp_dir / "default_fake"
+        knowledge_dir.mkdir(exist_ok=True)
+        (knowledge_dir / "faq.md").write_text("# FAQ\nrefund policy", encoding="utf-8")
+        index_path = temp_dir / "default_fake_index.json"
+
+        summary = build_knowledge_index(
+            knowledge_dir=knowledge_dir,
+            index_path=index_path,
+            chunk_size=100,
+            overlap=0,
+        )
+
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+        self.assertEqual(summary["embedding_provider"], "FakeEmbeddings")
+        self.assertFalse(summary["embedding_trusted"])
+        self.assertEqual(payload["embedding_provider"], "FakeEmbeddings")
+        self.assertFalse(payload["embedding_trusted"])
+
+    def test_build_knowledge_index_keeps_fake_embeddings_untrusted(self) -> None:
+        temp_dir = self._make_temp_dir()
+        knowledge_dir = temp_dir / "explicit_fake"
+        knowledge_dir.mkdir(exist_ok=True)
+        (knowledge_dir / "faq.md").write_text("# FAQ\nrefund policy", encoding="utf-8")
+        index_path = temp_dir / "explicit_fake_index.json"
+
+        summary = build_knowledge_index(
+            knowledge_dir=knowledge_dir,
+            index_path=index_path,
+            chunk_size=100,
+            overlap=0,
+            embeddings=FakeEmbeddings(embedding_trusted=True),
+        )
+
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+        self.assertEqual(summary["embedding_provider"], "FakeEmbeddings")
+        self.assertFalse(summary["embedding_trusted"])
+        self.assertEqual(payload["embedding_provider"], "FakeEmbeddings")
+        self.assertFalse(payload["embedding_trusted"])
+
+    def test_build_knowledge_index_uses_trusted_embedding_provider_metadata(self) -> None:
+        temp_dir = self._make_temp_dir()
+        knowledge_dir = temp_dir / "trusted_local"
+        knowledge_dir.mkdir(exist_ok=True)
+        (knowledge_dir / "faq.md").write_text("# FAQ\nrefund policy", encoding="utf-8")
+        index_path = temp_dir / "trusted_local_index.json"
+
+        summary = build_knowledge_index(
+            knowledge_dir=knowledge_dir,
+            index_path=index_path,
+            chunk_size=100,
+            overlap=0,
+            embeddings=TrustedLocalEmbeddings(),
+        )
+
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+        self.assertEqual(summary["embedding_provider"], "TrustedLocalEmbeddings")
+        self.assertTrue(summary["embedding_trusted"])
+        self.assertEqual(payload["embedding_provider"], "TrustedLocalEmbeddings")
+        self.assertTrue(payload["embedding_trusted"])
 
 
 class KeywordRetrieverTests(unittest.TestCase):

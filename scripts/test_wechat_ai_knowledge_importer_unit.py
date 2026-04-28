@@ -5,6 +5,7 @@ import sys
 import uuid
 from pathlib import Path
 from unittest import TestCase
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -157,6 +158,27 @@ class KnowledgeImporterTests(TestCase):
             self.assertGreaterEqual(status.documents_loaded, 1)
             self.assertEqual(status.embedding_provider, "FakeEmbeddings")
             self.assertFalse(status.embedding_trusted)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_rebuild_index_uses_trusted_local_embedding_provider_from_env(self) -> None:
+        from wechat_ai.app.knowledge_importer import KnowledgeImporter
+
+        root = _fresh_dir(".tmp_knowledge_importer_trusted_local")
+        try:
+            extracted_dir = root / "knowledge" / "uploads" / "extracted"
+            extracted_dir.mkdir(parents=True, exist_ok=True)
+            (extracted_dir / "faq.md").write_text("# FAQ\nrefund policy", encoding="utf-8")
+            with patch.dict("os.environ", {"WECHATAUTO_EMBEDDING_PROVIDER": "trusted_local"}, clear=False):
+                importer = KnowledgeImporter(
+                    knowledge_dir=root / "knowledge",
+                    uploads_dir=root / "knowledge" / "uploads",
+                    index_path=root / "knowledge" / "local_knowledge_index.json",
+                )
+                status = importer.rebuild_index()
+
+            self.assertEqual(status.embedding_provider, "TrustedLocalEmbeddings")
+            self.assertTrue(status.embedding_trusted)
         finally:
             shutil.rmtree(root, ignore_errors=True)
 

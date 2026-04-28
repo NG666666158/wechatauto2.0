@@ -103,6 +103,28 @@ const checks = [
     },
   },
   {
+    name: "pending page sends manual reviewer audit fields",
+    run: () => {
+      const source = read("app/pending/page.tsx")
+      return (
+        source.includes('reason: "manual_approve"') &&
+        source.includes('reason: "manual_cancel"') &&
+        countOccurrences(source, 'reviewed_by: "operator"') >= 3
+      )
+    },
+  },
+  {
+    name: "pending page renders reply review audit fields",
+    run: () => {
+      const source = read("app/pending/page.tsx")
+      return (
+        source.includes("reviewed_by") &&
+        source.includes("reviewed_at") &&
+        source.includes("review_reason")
+      )
+    },
+  },
+  {
     name: "home page loads uncertain send job overview",
     run: () => {
       const source = read("app/page.tsx")
@@ -118,6 +140,17 @@ const checks = [
     run: () => {
       const source = read("app/knowledge/page.tsx")
       return source.includes("importKnowledgeFiles") && source.includes("buildWebKnowledgeFromDocuments")
+    },
+  },
+  {
+    name: "knowledge page shows embedding provider trust status",
+    run: () => {
+      const source = read("app/knowledge/page.tsx")
+      return (
+        source.includes("embedding_provider") &&
+        source.includes("embedding_trusted") &&
+        source.includes("untrusted")
+      )
     },
   },
   {
@@ -166,4 +199,8 @@ console.log(`P5 frontend acceptance passed: ${checks.length}/${checks.length} ch
 
 function read(file) {
   return readFileSync(join(root, file), "utf8")
+}
+
+function countOccurrences(source, token) {
+  return source.split(token).length - 1
 }

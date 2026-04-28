@@ -85,6 +85,27 @@ class ProfileConfigTests(unittest.TestCase):
         )
         self.assertEqual(settings.fallback_reply, config.DEFAULT_FALLBACK_REPLY)
 
+    def test_embedding_settings_default_to_fake_provider(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            config = self.load_config()
+            settings = config.EmbeddingSettings.from_env()
+
+        self.assertEqual(settings.provider, "fake")
+
+    def test_embedding_settings_support_trusted_local_provider(self) -> None:
+        with patch.dict(os.environ, {"WECHATAUTO_EMBEDDING_PROVIDER": " trusted_local "}, clear=True):
+            config = self.load_config()
+            settings = config.EmbeddingSettings.from_env()
+
+        self.assertEqual(settings.provider, "trusted_local")
+
+    def test_embedding_settings_reject_unknown_provider(self) -> None:
+        with patch.dict(os.environ, {"WECHATAUTO_EMBEDDING_PROVIDER": "cloud"}, clear=True):
+            config = self.load_config()
+
+            with self.assertRaises(ValueError):
+                config.EmbeddingSettings.from_env()
+
 
 if __name__ == "__main__":
     unittest.main()

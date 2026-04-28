@@ -71,6 +71,7 @@ export type KnowledgeStatus = {
   chunks_created: number
   last_built_at: string | null
   embedding_provider: string | null
+  embedding_trusted?: boolean | null
   supported_extensions: string[]
 }
 
@@ -249,6 +250,9 @@ export type ReplyJob = {
   idempotency_key?: string
   created_at?: string | null
   updated_at?: string | null
+  review_reason?: string | null
+  reviewed_by?: string | null
+  reviewed_at?: string | null
 }
 
 export type SendConfirmationResult = Record<string, unknown> & {
@@ -278,15 +282,19 @@ export type SendJob = {
 
 export type ReplyJobApproveBody = {
   draft_reply?: string
+  reason?: string
+  reviewed_by?: string
 }
 
 export type ReplyJobCancelBody = {
   reason?: string
+  reviewed_by?: string
 }
 
 export type SendJobResolveBody = {
   resolution: "confirmed" | "failed"
   reason?: string
+  reviewed_by?: string
 }
 
 export type SendReplyResult = {

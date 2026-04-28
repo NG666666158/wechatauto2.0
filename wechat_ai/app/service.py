@@ -880,16 +880,35 @@ class DesktopAppService:
     def list_reply_jobs(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, object]]:
         return self.runtime_state_store.list_reply_jobs(status=status, limit=limit)
 
-    def approve_reply_job(self, reply_job_id: str, *, draft_reply: str | None = None) -> dict[str, object]:
+    def approve_reply_job(
+        self,
+        reply_job_id: str,
+        *,
+        draft_reply: str | None = None,
+        reason: str | None = None,
+        reviewed_by: str = "operator",
+    ) -> dict[str, object]:
         return self.runtime_state_store.mark_reply_job(
             reply_job_id,
             status="APPROVED",
             draft_reply=draft_reply,
+            review_reason=reason,
+            reviewed_by=reviewed_by,
         )
 
-    def cancel_reply_job(self, reply_job_id: str, *, reason: str | None = None) -> dict[str, object]:
-        del reason
-        return self.runtime_state_store.mark_reply_job(reply_job_id, status="CANCELLED")
+    def cancel_reply_job(
+        self,
+        reply_job_id: str,
+        *,
+        reason: str | None = None,
+        reviewed_by: str = "operator",
+    ) -> dict[str, object]:
+        return self.runtime_state_store.mark_reply_job(
+            reply_job_id,
+            status="CANCELLED",
+            review_reason=reason,
+            reviewed_by=reviewed_by,
+        )
 
     def list_send_jobs(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, object]]:
         return self.runtime_state_store.list_send_jobs(status=status, limit=limit)
@@ -903,11 +922,13 @@ class DesktopAppService:
         *,
         resolution: str,
         reason: str | None = None,
+        reviewed_by: str = "operator",
     ) -> dict[str, object]:
         return self.runtime_state_store.resolve_uncertain_send_job(
             send_job_id,
             resolution=resolution,
             reason=reason,
+            reviewed_by=reviewed_by,
         )
 
     def validate_send_reply(self, conversation_id: str, text: str) -> dict[str, object]:

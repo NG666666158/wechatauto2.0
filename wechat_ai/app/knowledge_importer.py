@@ -9,7 +9,9 @@ from typing import Sequence
 
 from wechat_ai import paths
 from wechat_ai.app.models import KnowledgeFileRecord, KnowledgeIndexStatus
+from wechat_ai.config import EmbeddingSettings
 from wechat_ai.rag.document_extractors import DocumentExtractorRegistry
+from wechat_ai.rag.embeddings import build_embeddings
 from wechat_ai.rag.ingest import build_knowledge_index
 from wechat_ai.rag.retriever import index_embedding_provider, index_has_trusted_embeddings
 
@@ -31,6 +33,7 @@ class KnowledgeImporter:
         chunk_size: int = 1000,
         overlap: int = 200,
         document_registry: DocumentExtractorRegistry | None = None,
+        embedding_settings: EmbeddingSettings | None = None,
     ) -> None:
         self.knowledge_dir = Path(knowledge_dir or paths.KNOWLEDGE_DIR)
         self.uploads_dir = Path(uploads_dir or paths.KNOWLEDGE_UPLOADS_DIR)
@@ -38,6 +41,7 @@ class KnowledgeImporter:
         self.chunk_size = chunk_size
         self.overlap = overlap
         self.document_registry = document_registry or DocumentExtractorRegistry()
+        self.embedding_settings = embedding_settings
 
     def import_files(
         self,
@@ -113,6 +117,7 @@ class KnowledgeImporter:
             chunk_size=self.chunk_size,
             overlap=self.overlap,
             source_paths=source_paths,
+            embeddings=build_embeddings(self.embedding_settings or EmbeddingSettings.from_env()),
         )
         return KnowledgeIndexStatus(
             ready=self.index_path.exists(),

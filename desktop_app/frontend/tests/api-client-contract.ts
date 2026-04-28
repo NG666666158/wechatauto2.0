@@ -44,10 +44,16 @@ async function assertApiClientContract() {
   const replyJobs: ApiResponse<ReplyJob[]> = await apiClient.listReplyJobs(undefined, 20)
   const approvedReplyJob: ApiResponse<ReplyJob> = await apiClient.approveReplyJob("reply_001", {
     draft_reply: "manual approved reply",
+    reason: "manual_approve",
+    reviewed_by: "operator",
   })
   const cancelledReplyJob: ApiResponse<ReplyJob> = await apiClient.cancelReplyJob("reply_001", {
-    reason: "manual cancel",
+    reason: "manual_cancel",
+    reviewed_by: "operator",
   })
+  const replyAuditReason: string | null | undefined = approvedReplyJob.data?.review_reason
+  const replyAuditReviewer: string | null | undefined = approvedReplyJob.data?.reviewed_by
+  const replyAuditTime: string | null | undefined = approvedReplyJob.data?.reviewed_at
   const sendJobs: ApiResponse<SendJob[]> = await apiClient.listSendJobs("SEND_UNCERTAIN", 20)
   const uncertainSendJobs: ApiResponse<SendJob[]> = await apiClient.listUncertainSendJobs(20)
   const uncertainSendEvidence: SendJob["confirmation_result"] = {
@@ -61,6 +67,7 @@ async function assertApiClientContract() {
   const resolvedSendJob: ApiResponse<SendJob> = await apiClient.resolveSendJob("send_001", {
     resolution: "confirmed",
     reason: "manual confirmation",
+    reviewed_by: "operator",
   })
   const suggestion: ApiResponse<ReplySuggestion> = await apiClient.suggestReply("friend:zhang", "请介绍一下试用政策")
   const sent: ApiResponse<SendReplyResult> = await apiClient.sendConversationReply("friend:zhang", "您好，稍后为您介绍。")
@@ -77,6 +84,8 @@ async function assertApiClientContract() {
     identity_facts: ["我是产品顾问"],
   })
   const knowledgeStatus: ApiResponse<import("@/lib/api").KnowledgeStatus> = await apiClient.getKnowledgeStatus()
+  const embeddingProvider: string | null | undefined = knowledgeStatus.data?.embedding_provider
+  const embeddingTrusted: boolean | null | undefined = knowledgeStatus.data?.embedding_trusted
   const knowledgeSearch: ApiResponse<KnowledgeSearchResult[]> = await apiClient.searchKnowledge("试用政策", 5)
   const knowledgeImport: ApiResponse<KnowledgeImportResult> = await apiClient.importKnowledgeFiles([
     "C:\\docs\\product.pdf",
@@ -107,6 +116,9 @@ async function assertApiClientContract() {
     replyJobs,
     approvedReplyJob,
     cancelledReplyJob,
+    replyAuditReason,
+    replyAuditReviewer,
+    replyAuditTime,
     sendJobs,
     uncertainSendJobs,
     uncertainSendEvidence,
@@ -121,6 +133,8 @@ async function assertApiClientContract() {
     selfIdentity,
     updatedSelfIdentity,
     knowledgeStatus,
+    embeddingProvider,
+    embeddingTrusted,
     knowledgeSearch,
     knowledgeImport,
     webKnowledge,

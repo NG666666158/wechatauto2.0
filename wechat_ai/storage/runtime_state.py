@@ -133,7 +133,11 @@ class RuntimeStateStore:
         *,
         status: str,
         draft_reply: str | None = None,
+        review_reason: str | None = None,
+        reviewed_by: str | None = None,
     ) -> dict[str, Any]:
+        normalized_status = str(status).strip()
+        reviewed_at = utc_timestamp() if normalized_status in {"APPROVED", "CANCELLED"} else None
         with self._connect() as conn:
             current = self._fetch_one(conn, "SELECT * FROM reply_jobs WHERE reply_job_id = ?", (reply_job_id,))
             if not current:
@@ -143,12 +147,18 @@ class RuntimeStateStore:
                 UPDATE reply_jobs
                 SET status = ?,
                     draft_reply = COALESCE(?, draft_reply),
+                    review_reason = COALESCE(?, review_reason),
+                    reviewed_by = COALESCE(?, reviewed_by),
+                    reviewed_at = COALESCE(?, reviewed_at),
                     updated_at = ?
                 WHERE reply_job_id = ?
                 """,
                 (
-                    str(status).strip(),
+                    normalized_status,
                     draft_reply,
+                    review_reason,
+                    reviewed_by,
+                    reviewed_at,
                     utc_timestamp(),
                     reply_job_id,
                 ),
@@ -200,6 +210,7 @@ class RuntimeStateStore:
         *,
         resolution: str,
         reason: str | None = None,
+        reviewed_by: str | None = None,
     ) -> dict[str, Any]:
         normalized_resolution = str(resolution).strip().lower()
         if normalized_resolution not in {"confirmed", "failed"}:
@@ -211,10 +222,13 @@ class RuntimeStateStore:
                 raise KeyError(f"send job not found: {send_job_id}")
             if current.get("status") != "SEND_UNCERTAIN":
                 raise ValueError(f"send job must be SEND_UNCERTAIN to resolve manually: {send_job_id}")
+            reviewer = str(reviewed_by or "operator").strip() or "operator"
             confirmation_result = {
                 "source": "manual",
                 "resolution": normalized_resolution,
                 "reason": str(reason or ""),
+                "reviewed_by": reviewer,
+                "operator": reviewer,
                 "resolved_at": utc_timestamp(),
             }
             conn.execute(
@@ -474,6 +488,9 @@ class RuntimeStateStore:
                     risk_level TEXT NOT NULL DEFAULT 'LOW',
                     need_human_review INTEGER NOT NULL DEFAULT 0,
                     idempotency_key TEXT NOT NULL,
+                    review_reason TEXT,
+                    reviewed_by TEXT,
+                    reviewed_at TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -514,6 +531,15 @@ class RuntimeStateStore:
                 ON send_attempts(send_job_id, attempt_no);
                 """
             )
+            self._ensure_columns(
+                conn,
+                "reply_jobs",
+                {
+                    "review_reason": "TEXT",
+                    "reviewed_by": "TEXT",
+                    "reviewed_at": "TEXT",
+                },
+            )
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -521,6 +547,12 @@ class RuntimeStateStore:
         conn.execute("PRAGMA journal_mode=TRUNCATE")
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
+
+    def _ensure_columns(self, conn: sqlite3.Connection, table_name: str, columns: dict[str, str]) -> None:
+        existing = {str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
+        for column_name, column_type in columns.items():
+            if column_name not in existing:
+                conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
 
     def _fetch_all_public(self, sql: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
         with self._connect() as conn:

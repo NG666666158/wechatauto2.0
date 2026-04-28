@@ -15,6 +15,8 @@ from .profile.defaults import (
     default_user_profile_dir,
 )
 
+SUPPORTED_EMBEDDING_PROVIDERS = frozenset({"fake", "trusted_local"})
+
 
 @dataclass(slots=True)
 class MiniMaxSettings:
@@ -95,3 +97,16 @@ class ReplySettings:
             group_mention_names=names,
             prompt_preview_max_chars=int(os.getenv("WECHAT_PROMPT_PREVIEW_MAX_CHARS", "400")),
         )
+
+
+@dataclass(slots=True, frozen=True)
+class EmbeddingSettings:
+    provider: str = "fake"
+
+    @classmethod
+    def from_env(cls) -> "EmbeddingSettings":
+        provider = os.getenv("WECHATAUTO_EMBEDDING_PROVIDER", "fake").strip().lower() or "fake"
+        if provider not in SUPPORTED_EMBEDDING_PROVIDERS:
+            supported = ", ".join(sorted(SUPPORTED_EMBEDDING_PROVIDERS))
+            raise ValueError(f"Unsupported WECHATAUTO_EMBEDDING_PROVIDER '{provider}'. Supported providers: {supported}")
+        return cls(provider=provider)

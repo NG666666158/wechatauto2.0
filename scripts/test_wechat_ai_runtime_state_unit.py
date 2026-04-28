@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import sqlite3
 import sys
 import uuid
 from pathlib import Path
@@ -20,6 +21,61 @@ def _fresh_dir(prefix: str) -> Path:
 
 
 class RuntimeStateStoreTests(TestCase):
+    def test_new_reply_jobs_schema_includes_review_audit_columns(self) -> None:
+        from wechat_ai.storage.runtime_state import RuntimeStateStore
+
+        temp_dir = _fresh_dir(".tmp_runtime_state_reply_audit_schema")
+        try:
+            db_path = temp_dir / "runtime_state.sqlite3"
+            RuntimeStateStore(db_path)
+
+            with sqlite3.connect(db_path) as conn:
+                columns = {row[1]: row[2] for row in conn.execute("PRAGMA table_info(reply_jobs)").fetchall()}
+
+            self.assertEqual(columns["review_reason"], "TEXT")
+            self.assertEqual(columns["reviewed_by"], "TEXT")
+            self.assertEqual(columns["reviewed_at"], "TEXT")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_existing_reply_jobs_table_is_migrated_with_review_audit_columns(self) -> None:
+        from wechat_ai.storage.runtime_state import RuntimeStateStore
+
+        temp_dir = _fresh_dir(".tmp_runtime_state_reply_audit_migration")
+        try:
+            db_path = temp_dir / "runtime_state.sqlite3"
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("PRAGMA journal_mode=TRUNCATE")
+                conn.executescript(
+                    """
+                    CREATE TABLE reply_jobs (
+                        reply_job_id TEXT PRIMARY KEY,
+                        conversation_id TEXT NOT NULL,
+                        trigger_event_ids TEXT NOT NULL,
+                        input_text TEXT NOT NULL,
+                        context_snapshot_id TEXT,
+                        status TEXT NOT NULL,
+                        draft_reply TEXT,
+                        risk_level TEXT NOT NULL DEFAULT 'LOW',
+                        need_human_review INTEGER NOT NULL DEFAULT 0,
+                        idempotency_key TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    """
+                )
+
+            RuntimeStateStore(db_path)
+
+            with sqlite3.connect(db_path) as conn:
+                columns = {row[1] for row in conn.execute("PRAGMA table_info(reply_jobs)").fetchall()}
+
+            self.assertIn("review_reason", columns)
+            self.assertIn("reviewed_by", columns)
+            self.assertIn("reviewed_at", columns)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_message_reply_and_send_jobs_are_idempotent(self) -> None:
         from wechat_ai.storage.runtime_state import RuntimeStateStore
 
@@ -126,13 +182,26 @@ class RuntimeStateStoreTests(TestCase):
                 reply["reply_job_id"],
                 status="APPROVED",
                 draft_reply="new draft",
+                review_reason="approved after checking context",
+                reviewed_by="lead-operator",
             )
-            cancelled = store.mark_reply_job(reply["reply_job_id"], status="CANCELLED")
+            cancelled = store.mark_reply_job(
+                reply["reply_job_id"],
+                status="CANCELLED",
+                review_reason="duplicate request",
+                reviewed_by="qa-operator",
+            )
 
             self.assertEqual(approved["status"], "APPROVED")
             self.assertEqual(approved["draft_reply"], "new draft")
+            self.assertEqual(approved["review_reason"], "approved after checking context")
+            self.assertEqual(approved["reviewed_by"], "lead-operator")
+            self.assertTrue(approved["reviewed_at"])
             self.assertEqual(cancelled["status"], "CANCELLED")
             self.assertEqual(cancelled["draft_reply"], "new draft")
+            self.assertEqual(cancelled["review_reason"], "duplicate request")
+            self.assertEqual(cancelled["reviewed_by"], "qa-operator")
+            self.assertTrue(cancelled["reviewed_at"])
             self.assertEqual(store.get_reply_job(reply["reply_job_id"])["status"], "CANCELLED")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -162,12 +231,15 @@ class RuntimeStateStoreTests(TestCase):
                 send["send_job_id"],
                 resolution="confirmed",
                 reason="operator saw it in chat",
+                reviewed_by="manual-reviewer",
             )
 
             self.assertEqual(confirmed["status"], "SENT_CONFIRMED")
             self.assertEqual(confirmed["confirmation_result"]["source"], "manual")
             self.assertEqual(confirmed["confirmation_result"]["resolution"], "confirmed")
             self.assertEqual(confirmed["confirmation_result"]["reason"], "operator saw it in chat")
+            self.assertEqual(confirmed["confirmation_result"]["reviewed_by"], "manual-reviewer")
+            self.assertEqual(confirmed["confirmation_result"]["operator"], "manual-reviewer")
             self.assertIn("resolved_at", confirmed["confirmation_result"])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)

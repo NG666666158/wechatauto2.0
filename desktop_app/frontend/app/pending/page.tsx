@@ -103,8 +103,12 @@ export default function PendingPage() {
     try {
       const response =
         action === "approve"
-          ? await apiClient.approveReplyJob(replyJobId, draftReply ? { draft_reply: draftReply } : undefined)
-          : await apiClient.cancelReplyJob(replyJobId, { reason: "manual_cancel" })
+          ? await apiClient.approveReplyJob(replyJobId, {
+              ...(draftReply ? { draft_reply: draftReply } : {}),
+              reason: "manual_approve",
+              reviewed_by: "operator",
+            })
+          : await apiClient.cancelReplyJob(replyJobId, { reason: "manual_cancel", reviewed_by: "operator" })
       if (!response.success) {
         setError(response.error ? `${response.error.code}: ${response.error.message}` : "ReplyJob 操作失败")
         return
@@ -127,6 +131,7 @@ export default function PendingPage() {
       const response = await apiClient.resolveSendJob(sendJobId, {
         resolution,
         reason: resolution === "confirmed" ? "manual_confirmed" : "manual_failed",
+        reviewed_by: "operator",
       })
       if (!response.success) {
         setError(response.error ? `${response.error.code}: ${response.error.message}` : "SendJob 操作失败")
@@ -258,11 +263,25 @@ function ReplyJobCard({
       <JobHeader id={job.reply_job_id} status={job.status} time={job.updated_at ?? job.created_at} />
       <MetaRow label="会话" value={job.conversation_id} />
       <MetaRow label="风险" value={job.risk_level || "LOW"} />
+      <ReplyReviewAudit job={job} />
       <TextBlock label="触发消息" value={job.input_text} />
       <TextBlock label="草稿回复" value={job.draft_reply || "暂无草稿内容"} strong />
       <ReplyJobActions job={job} busyTarget={busyTarget} onReplyAction={onReplyAction} />
       <ControlActions conversationId={job.conversation_id} busyTarget={busyTarget} onControl={onControl} />
     </article>
+  )
+}
+
+function ReplyReviewAudit({ job }: { job: ReplyJob }) {
+  if (!job.reviewed_by && !job.reviewed_at && !job.review_reason) {
+    return null
+  }
+  return (
+    <div className="mt-2 rounded-md bg-white px-3 py-2">
+      {job.reviewed_by ? <MetaRow label="reviewed_by" value={job.reviewed_by} /> : null}
+      {job.reviewed_at ? <MetaRow label="reviewed_at" value={formatDate(job.reviewed_at)} /> : null}
+      {job.review_reason ? <MetaRow label="review_reason" value={job.review_reason} /> : null}
+    </div>
   )
 }
 

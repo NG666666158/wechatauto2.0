@@ -4,8 +4,13 @@ import hashlib
 from dataclasses import dataclass
 from typing import Mapping
 
+from wechat_ai.config import EmbeddingSettings
+
 
 class BaseEmbeddings:
+    provider_name: str | None = None
+    embedding_trusted: bool = False
+
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         raise NotImplementedError
 
@@ -14,6 +19,7 @@ class BaseEmbeddings:
 
 
 FAKE_EMBEDDING_PROVIDER = "FakeEmbeddings"
+TRUSTED_LOCAL_EMBEDDING_PROVIDER = "TrustedLocalEmbeddings"
 
 
 @dataclass(frozen=True)
@@ -39,6 +45,8 @@ class EmbeddingProviderInfo:
 @dataclass(frozen=True)
 class FakeEmbeddings(BaseEmbeddings):
     dimensions: int = 8
+    provider_name: str = FAKE_EMBEDDING_PROVIDER
+    embedding_trusted: bool = False
 
     def __post_init__(self) -> None:
         if self.dimensions <= 0:
@@ -57,6 +65,51 @@ class FakeEmbeddings(BaseEmbeddings):
             byte = digest[index % len(digest)]
             values.append(round(byte / 255.0, 6))
         return values
+
+
+@dataclass(frozen=True)
+class TrustedLocalEmbeddings(BaseEmbeddings):
+    dimensions: int = 8
+    provider_name: str = TRUSTED_LOCAL_EMBEDDING_PROVIDER
+    embedding_trusted: bool = True
+
+    def __post_init__(self) -> None:
+        if self.dimensions <= 0:
+            raise ValueError("dimensions must be positive")
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self._embed_text(text) for text in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed_text(text)
+
+    def _embed_text(self, text: str) -> list[float]:
+        digest = hashlib.sha256(f"trusted-local:{text}".encode("utf-8")).digest()
+        values: list[float] = []
+        for index in range(self.dimensions):
+            byte = digest[index % len(digest)]
+            values.append(round(byte / 255.0, 6))
+        return values
+
+
+def build_embeddings(settings: EmbeddingSettings | None = None) -> BaseEmbeddings:
+    resolved_settings = settings or EmbeddingSettings.from_env()
+    if resolved_settings.provider == "fake":
+        return FakeEmbeddings()
+    if resolved_settings.provider == "trusted_local":
+        return TrustedLocalEmbeddings()
+    raise ValueError(f"Unsupported embedding provider '{resolved_settings.provider}'")
+
+
+def embedding_provider_info(embeddings: BaseEmbeddings) -> EmbeddingProviderInfo:
+    provider = _normalize_provider(getattr(embeddings, "provider_name", None)) or embeddings.__class__.__name__
+    trusted = bool(getattr(embeddings, "embedding_trusted", False))
+    return EmbeddingProviderInfo.from_index_payload(
+        {
+            "embedding_provider": provider,
+            "embedding_trusted": trusted,
+        }
+    )
 
 
 def _normalize_provider(value: object) -> str | None:
