@@ -5,18 +5,19 @@ import { AppShell } from "@/components/app-shell"
 import { EmptyState, ErrorState, LoadingState } from "@/components/api-state"
 import { useServerEvents } from "@/hooks/use-server-events"
 import { apiClient } from "@/lib/api"
-import type { KnowledgeImportResult, KnowledgeSearchResult, KnowledgeStatus, WebKnowledgeBuildResult } from "@/lib/api"
-import { BookOpen, Cloud, Database, FileText, RefreshCw, Search, UploadCloud } from "lucide-react"
+import type { KnowledgeAcceptanceHistoryRecord, KnowledgeImportResult, KnowledgeSearchResult, KnowledgeStatus, WebKnowledgeBuildResult } from "@/lib/api"
+import { BookOpen, Cloud, Database, FileText, History, RefreshCw, Search, ShieldCheck, UploadCloud } from "lucide-react"
 
 export default function KnowledgePage() {
   const [status, setStatus] = useState<KnowledgeStatus | null>(null)
   const [query, setQuery] = useState("")
   const [filePathsText, setFilePathsText] = useState("")
   const [searchResults, setSearchResults] = useState<KnowledgeSearchResult[]>([])
+  const [acceptanceHistory, setAcceptanceHistory] = useState<KnowledgeAcceptanceHistoryRecord[]>([])
   const [importResult, setImportResult] = useState<KnowledgeImportResult | null>(null)
   const [webResult, setWebResult] = useState<WebKnowledgeBuildResult | null>(null)
   const [loadingStatus, setLoadingStatus] = useState(true)
-  const [busyAction, setBusyAction] = useState<"search" | "import" | "web" | "">("")
+  const [busyAction, setBusyAction] = useState<"search" | "acceptance" | "import" | "web" | "">("")
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
 
@@ -37,6 +38,15 @@ export default function KnowledgePage() {
     }
   }, [])
 
+  const loadAcceptanceHistory = useCallback(async () => {
+    try {
+      const response = await apiClient.getKnowledgeAcceptanceHistory(8)
+      setAcceptanceHistory(response.success && response.data ? response.data : [])
+    } catch {
+      setAcceptanceHistory([])
+    }
+  }, [])
+
   async function searchKnowledge() {
     const keyword = query.trim()
     if (!keyword) {
@@ -53,9 +63,37 @@ export default function KnowledgePage() {
         return
       }
       setSearchResults(response.data)
+      await loadAcceptanceHistory()
       setNotice(`已返回 ${response.data.length} 条检索结果。`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "无法连接检索接口")
+    } finally {
+      setBusyAction("")
+    }
+  }
+
+  async function runAcceptanceCheck() {
+    const keyword = query.trim()
+    if (!keyword) {
+      setError("Please enter a query before running RAG acceptance")
+      return
+    }
+    setBusyAction("acceptance")
+    setError("")
+    setNotice("")
+    try {
+      const response = await apiClient.buildKnowledgeAcceptanceSnapshot(keyword)
+      if (!response.success || !response.data) {
+        setError(response.error ? `${response.error.code}: ${response.error.message}` : "Knowledge acceptance failed")
+        return
+      }
+      setSearchResults(response.data.retrieved_chunks)
+      setNotice(`RAG acceptance recorded: ${response.data.retrieved_chunk_ids.length} chunks`)
+      await loadStatus()
+      await loadAcceptanceHistory()
+      await loadAcceptanceHistory()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Knowledge acceptance API unavailable")
     } finally {
       setBusyAction("")
     }
@@ -79,6 +117,7 @@ export default function KnowledgePage() {
       setImportResult(response.data)
       setNotice(response.data.index_rebuilt ? "文件已入库并重建索引。" : "文件已提交入库。")
       await loadStatus()
+      await loadAcceptanceHistory()
     } catch (err) {
       setError(err instanceof Error ? err.message : "无法连接文件入库接口")
     } finally {
@@ -120,10 +159,12 @@ export default function KnowledgePage() {
 
   useEffect(() => {
     void loadStatus()
-  }, [loadStatus])
+    void loadAcceptanceHistory()
+  }, [loadStatus, loadAcceptanceHistory])
 
   useServerEvents(() => {
     void loadStatus()
+    void loadAcceptanceHistory()
   }, { eventTypes: ["knowledge.progress"], replay: 1 })
 
   return (
@@ -197,6 +238,14 @@ export default function KnowledgePage() {
               >
                 {busyAction === "search" ? "检索中" : "检索"}
               </button>
+              <button
+                disabled={busyAction === "acceptance"}
+                onClick={runAcceptanceCheck}
+                className="flex h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:text-slate-400"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                {busyAction === "acceptance" ? "验收中" : "RAG 验收"}
+              </button>
             </div>
           </div>
 
@@ -222,9 +271,64 @@ export default function KnowledgePage() {
               <EmptyState title="暂无检索结果">先导入文档，或输入问题后点击检索。</EmptyState>
             )}
           </div>
+          <AcceptanceHistoryPanel records={acceptanceHistory} />
         </section>
       </div>
     </AppShell>
+  )
+}
+
+function AcceptanceHistoryPanel({ records }: { records: KnowledgeAcceptanceHistoryRecord[] }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center gap-2 text-[15px] font-semibold text-slate-800">
+        <History className="h-4 w-4 text-emerald-500" />
+        Knowledge Acceptance History
+      </div>
+      {records.length ? (
+        <div className="space-y-3">
+          {records.map((history) => (
+            <div key={`${history.created_at}-${history.search_query}`} className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="truncate text-sm font-semibold text-slate-800">{history.search_query || "empty query"}</span>
+                <span className={`shrink-0 rounded-md border px-2 py-1 text-xs font-medium ${trustBadgeClass(history.knowledge_trust_status)}`}>
+                  {formatKnowledgeTrustStatus(history.knowledge_trust_status)}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs text-slate-500">
+                <EvidenceCell label="created_at" value={formatDate(history.created_at)} />
+                <EvidenceCell label="provider" value={history.embedding_provider || "-"} />
+                <EvidenceCell label="ready" value={history.knowledge_ready ? "ready" : "not ready"} />
+                <EvidenceCell label="web_build" value={history.web_build_status || "-"} />
+              </div>
+              <HistoryTokenRow label="retrieved_chunk_ids" values={history.retrieved_chunk_ids} />
+              <HistoryTokenRow label="imported_files" values={history.imported_files} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState title="No acceptance history">Run a RAG acceptance check to create an auditable compact record.</EmptyState>
+      )}
+    </div>
+  )
+}
+
+function HistoryTokenRow({ label, values }: { label: string; values: string[] }) {
+  return (
+    <div className="mt-2">
+      <div className="mb-1 text-[10px] uppercase text-slate-400">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {values.length ? (
+          values.map((value) => (
+            <span key={value} className="max-w-full truncate rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
+              {value}
+            </span>
+          ))
+        ) : (
+          <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-400">none</span>
+        )}
+      </div>
+    </div>
   )
 }
 

@@ -10,6 +10,7 @@ import type {
   DashboardSummary,
   IdentityCandidate,
   IdentityDraft,
+  KnowledgeAcceptanceHistoryRecord,
   KnowledgeImportResult,
   KnowledgeSearchResult,
   PrivacyPolicy,
@@ -123,6 +124,10 @@ async function assertApiClientContract() {
   const embeddingProvider: string | null | undefined = knowledgeStatus.data?.embedding_provider
   const embeddingTrusted: boolean | null | undefined = knowledgeStatus.data?.embedding_trusted
   const knowledgeSearch: ApiResponse<KnowledgeSearchResult[]> = await apiClient.searchKnowledge("试用政策", 5)
+  const knowledgeAcceptanceHistory: ApiResponse<KnowledgeAcceptanceHistoryRecord[]> = await apiClient.getKnowledgeAcceptanceHistory(5)
+  const historyTrustStatus: "trusted" | "fake" | "untrusted" | "unknown" | undefined =
+    knowledgeAcceptanceHistory.data?.[0]?.knowledge_trust_status
+  const historyChunkIds: string[] | undefined = knowledgeAcceptanceHistory.data?.[0]?.retrieved_chunk_ids
   const knowledgeSearchEvidence: KnowledgeSearchResult = {
     chunk_id: "chunk_001",
     text: "trial policy",
@@ -223,6 +228,9 @@ async function assertApiClientContract() {
     embeddingProvider,
     embeddingTrusted,
     knowledgeSearch,
+    knowledgeAcceptanceHistory,
+    historyTrustStatus,
+    historyChunkIds,
     knowledgeSearchEvidence,
     knowledgeDenseScore,
     knowledgeKeywordScore,

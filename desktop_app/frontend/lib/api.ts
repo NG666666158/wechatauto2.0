@@ -75,6 +75,18 @@ export type KnowledgeStatus = {
   supported_extensions: string[]
 }
 
+export type KnowledgeAcceptanceHistoryRecord = {
+  created_at: string
+  imported_files: string[]
+  search_query: string
+  retrieved_chunk_ids: string[]
+  knowledge_ready: boolean
+  embedding_provider: string | null
+  embedding_trusted: boolean
+  knowledge_trust_status: "trusted" | "fake" | "untrusted" | "unknown"
+  web_build_status: string
+}
+
 export type KnowledgeSearchResult = {
   chunk_id: string
   text: string
@@ -92,6 +104,15 @@ export type KnowledgeSearchResult = {
   embedding_trusted?: boolean | null
   embedding_trust_status?: "trusted" | "fake" | "untrusted" | "unknown"
   embedding_trust_reason?: string
+}
+
+export type KnowledgeAcceptanceSnapshot = {
+  imported_files: string[]
+  search_query: string
+  retrieved_chunk_ids: string[]
+  retrieved_chunks: KnowledgeSearchResult[]
+  knowledge_status: KnowledgeStatus
+  web_build_status: string
 }
 
 export type KnowledgeFileImport = {
@@ -535,6 +556,10 @@ export const apiClient = {
   getGlobalSelfIdentity: () => request<SelfIdentity>("/identity/self/global"),
   updateGlobalSelfIdentity: (patchBody: SelfIdentityPatch) => patch<SelfIdentity>("/identity/self/global", patchBody),
   getKnowledgeStatus: () => request<KnowledgeStatus>("/knowledge/status"),
+  getKnowledgeAcceptanceHistory: (limit = 20) =>
+    request<KnowledgeAcceptanceHistoryRecord[]>(withQuery("/debug/knowledge-acceptance/history", { limit })),
+  buildKnowledgeAcceptanceSnapshot: (query: string) =>
+    request<KnowledgeAcceptanceSnapshot>(`/debug/knowledge-acceptance?q=${encodeURIComponent(query)}`),
   searchKnowledge: (query: string, limit = 3) =>
     request<KnowledgeSearchResult[]>(`/knowledge/search?q=${encodeURIComponent(query)}&limit=${limit}`),
   importKnowledgeFiles: (filePaths: string[]) => post<KnowledgeImportResult>("/knowledge/import", { file_paths: filePaths }),

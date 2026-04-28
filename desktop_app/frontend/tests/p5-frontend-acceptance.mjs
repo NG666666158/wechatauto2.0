@@ -61,6 +61,8 @@ const checks = [
         "searchKnowledge",
         "importKnowledgeFiles",
         "buildWebKnowledgeFromDocuments",
+        "getKnowledgeAcceptanceHistory",
+        "KnowledgeAcceptanceHistoryRecord",
         "getRecentLogs",
         "RecentLogFilters",
         "only_errors",
@@ -268,6 +270,23 @@ const checks = [
         apiSource.includes("evidence") &&
         apiSource.includes("metadata") &&
         apiSource.includes("retrieval_sources")
+      )
+    },
+  },
+  {
+    name: "knowledge page renders acceptance history panel",
+    run: () => {
+      const source = read("app/knowledge/page.tsx")
+      const apiSource = read("lib/api.ts")
+      return (
+        source.includes("AcceptanceHistoryPanel") &&
+        source.includes("acceptanceHistory") &&
+        source.includes("getKnowledgeAcceptanceHistory") &&
+        source.includes("knowledge_trust_status") &&
+        source.includes("retrieved_chunk_ids") &&
+        source.includes("imported_files") &&
+        !source.includes("history.retrieved_chunks") &&
+        apiSource.includes('"/debug/knowledge-acceptance/history"')
       )
     },
   },
