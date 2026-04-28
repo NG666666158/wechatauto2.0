@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 import { AppShell } from "@/components/app-shell"
 import { EmptyState, ErrorState, LoadingState } from "@/components/api-state"
 import { apiClient } from "@/lib/api"
-import type { ConversationControlPatch, RecentLogEvent, ReplyJob, SendAttempt, SendJob } from "@/lib/api"
+import type { ConversationControlPatch, RecentLogEvent, ReplyJob, SendAttempt, SendJob, SendJobListFilters } from "@/lib/api"
 import { AlertTriangle, Bot, Check, CheckCircle2, Hand, Pause, RefreshCw, ShieldAlert, X } from "lucide-react"
 
 type ActionTarget = {
@@ -40,11 +40,22 @@ export default function PendingPage() {
   const [attemptsBySendJob, setAttemptsBySendJob] = useState<Record<string, SendAttempt[]>>({})
   const [recentErrorLogs, setRecentErrorLogs] = useState<RecentLogEvent[]>([])
   const [sendFilter, setSendFilter] = useState<SendUncertainFilter>("all")
+  const [sendConversationFilter, setSendConversationFilter] = useState("")
+  const [sendErrorCodeFilter, setSendErrorCodeFilter] = useState("")
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [busyTarget, setBusyTarget] = useState("")
+
+  const sendFilterQuery = useMemo<SendJobListFilters>(
+    () => ({
+      unresolved: true,
+      conversation_id: sendConversationFilter.trim() || undefined,
+      error_code: sendErrorCodeFilter.trim() || undefined,
+    }),
+    [sendConversationFilter, sendErrorCodeFilter],
+  )
 
   async function loadPending({ quiet = false } = {}) {
     if (quiet) {
@@ -56,7 +67,7 @@ export default function PendingPage() {
     try {
       const [replies, uncertainSends, recentLogs] = await Promise.all([
         apiClient.listReplyJobs(undefined, 50),
-        apiClient.listUncertainSendJobs(50),
+        apiClient.listUncertainSendJobs(50, sendFilterQuery),
         apiClient.getRecentLogs(5, { only_errors: true }),
       ])
       if (!replies.success || !replies.data) {
@@ -88,7 +99,7 @@ export default function PendingPage() {
 
   useEffect(() => {
     void loadPending()
-  }, [])
+  }, [sendFilterQuery])
 
   const filteredSendJobs = useMemo(
     () =>
@@ -245,7 +256,14 @@ export default function PendingPage() {
               icon={<ShieldAlert className="h-4 w-4 text-rose-500" />}
               emptyTitle="暂无发送不确定记录"
               headerExtra={
-                <SendFilterTabs value={sendFilter} onChange={setSendFilter} />
+                <SendFilterControls
+                  value={sendFilter}
+                  conversationId={sendConversationFilter}
+                  errorCode={sendErrorCodeFilter}
+                  onChange={setSendFilter}
+                  onConversationIdChange={setSendConversationFilter}
+                  onErrorCodeChange={setSendErrorCodeFilter}
+                />
               }
             >
               <RecentErrorLogsPanel logs={recentErrorLogs} />
@@ -300,6 +318,42 @@ function QueuePanel({
         {hasChildren ? children : <EmptyState title={emptyTitle}>当前队列已经清空。</EmptyState>}
       </div>
     </section>
+  )
+}
+
+function SendFilterControls({
+  value,
+  conversationId,
+  errorCode,
+  onChange,
+  onConversationIdChange,
+  onErrorCodeChange,
+}: {
+  value: SendUncertainFilter
+  conversationId: string
+  errorCode: string
+  onChange: (value: SendUncertainFilter) => void
+  onConversationIdChange: (value: string) => void
+  onErrorCodeChange: (value: string) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <SendFilterTabs value={value} onChange={onChange} />
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          value={conversationId}
+          onChange={(event) => onConversationIdChange(event.target.value)}
+          placeholder="conversation_id"
+          className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-sky-300"
+        />
+        <input
+          value={errorCode}
+          onChange={(event) => onErrorCodeChange(event.target.value)}
+          placeholder="error_code"
+          className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-sky-300"
+        />
+      </div>
+    </div>
   )
 }
 
@@ -469,12 +523,13 @@ function SendJobCard({
           )}
         </div>
       ) : null}
+      <SendResolutionAudit job={job} />
       <EvidenceRows rows={screenshotRows} />
       <TextBlock label="发送内容" value={job.content} strong />
       <SendAttemptList attempts={attempts} />
       <div className="mt-3 flex items-start gap-2 rounded-md bg-white px-3 py-2 text-xs text-amber-700">
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <span>此页面不会重发消息。请先人工核对微信窗口中的真实发送状态。</span>
+        <span>此页面不会自动重发消息。请先人工核对微信窗口中的真实发送状态。</span>
       </div>
       <SendJobActions job={job} busyTarget={busyTarget} onResolve={onResolve} />
       <ControlActions conversationId={job.conversation_id} busyTarget={busyTarget} onControl={onControl} />
@@ -502,6 +557,22 @@ function SendAttemptList({ attempts }: { attempts: SendAttempt[] }) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function SendResolutionAudit({ job }: { job: SendJob }) {
+  const result = isRecord(job.confirmation_result) ? job.confirmation_result : {}
+  const reviewedBy = formatEvidenceValue(result.reviewed_by ?? result.operator)
+  const resolvedAt = formatEvidenceValue(result.resolved_at)
+  const resolutionNote = formatEvidenceValue(result.resolution_note ?? result.review_reason ?? result.reason)
+  if (!reviewedBy && !resolvedAt && !resolutionNote) return null
+  return (
+    <div className="mt-3 rounded-md border border-sky-100 bg-sky-50/70 px-3 py-2">
+      <div className="mb-2 text-xs font-semibold text-sky-700">处理历史</div>
+      {reviewedBy ? <MetaRow label="reviewed_by" value={reviewedBy} /> : null}
+      {resolvedAt ? <MetaRow label="resolved_at" value={formatDate(resolvedAt)} /> : null}
+      {resolutionNote ? <MetaRow label="resolution_note" value={resolutionNote} /> : null}
     </div>
   )
 }

@@ -57,6 +57,7 @@ class ScheduleBlockPatchRequest(StrictRequestModel):
 
 class SafetyPatternRulePatchRequest(StrictRequestModel):
     rule_id: str = Field(..., min_length=1, max_length=128)
+    rule_group: str | None = Field(None, max_length=64)
     enabled: bool | None = None
     match_type: str | None = Field(None, max_length=16)
     patterns: list[str] | None = Field(None, max_length=100)
@@ -67,6 +68,8 @@ class SafetyPatternRulePatchRequest(StrictRequestModel):
 class SafetyPolicyPatchRequest(StrictRequestModel):
     input_rules: list[SafetyPatternRulePatchRequest] | None = Field(None, max_length=50)
     output_rules: list[SafetyPatternRulePatchRequest] | None = Field(None, max_length=50)
+    rule_groups: dict[str, bool] | None = None
+    reset_to_defaults: bool | None = None
 
 
 class SettingsPatchRequest(StrictRequestModel):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 
 @dataclass(slots=True)
@@ -16,6 +16,7 @@ class SafetyDecision:
 @dataclass(slots=True)
 class SafetyPatternRule:
     rule_id: str
+    rule_group: str = ""
     patterns: list[str] = field(default_factory=list)
     reason_code: str = ""
     risk_level: str = "MEDIUM"
@@ -27,6 +28,7 @@ class SafetyPatternRule:
 class SafetyPolicyConfig:
     input_rules: list[SafetyPatternRule] = field(default_factory=list)
     output_rules: list[SafetyPatternRule] = field(default_factory=list)
+    rule_groups: dict[str, bool] = field(default_factory=dict)
 
 
 def default_safety_policy_config() -> SafetyPolicyConfig:
@@ -69,12 +71,14 @@ def default_safety_policy_config() -> SafetyPolicyConfig:
         input_rules=[
             SafetyPatternRule(
                 rule_id="prompt_injection_input",
+                rule_group="prompt_injection",
                 patterns=prompt_injection_patterns,
                 reason_code="PROMPT_INJECTION",
                 risk_level="HIGH",
             ),
             SafetyPatternRule(
                 rule_id="sensitive_information_input",
+                rule_group="sensitive_information",
                 patterns=sensitive_patterns,
                 reason_code="SENSITIVE_INFORMATION",
                 risk_level="HIGH",
@@ -82,6 +86,7 @@ def default_safety_policy_config() -> SafetyPolicyConfig:
             ),
             SafetyPatternRule(
                 rule_id="business_intent_input",
+                rule_group="business_risk",
                 patterns=business_patterns,
                 reason_code="HIGH_RISK_INTENT",
                 risk_level="MEDIUM",
@@ -90,6 +95,7 @@ def default_safety_policy_config() -> SafetyPolicyConfig:
         output_rules=[
             SafetyPatternRule(
                 rule_id="sensitive_information_output",
+                rule_group="sensitive_information",
                 patterns=sensitive_patterns,
                 reason_code="SENSITIVE_INFORMATION",
                 risk_level="HIGH",
@@ -97,11 +103,34 @@ def default_safety_policy_config() -> SafetyPolicyConfig:
             ),
             SafetyPatternRule(
                 rule_id="business_commitment_output",
+                rule_group="business_risk",
                 patterns=business_patterns,
                 reason_code="HIGH_RISK_COMMITMENT",
                 risk_level="MEDIUM",
             ),
         ],
+        rule_groups={
+            "prompt_injection": True,
+            "sensitive_information": True,
+            "business_risk": True,
+        },
+    )
+
+
+def set_rule_group_enabled(config: SafetyPolicyConfig, rule_group: str, enabled: bool) -> SafetyPolicyConfig:
+    group = str(rule_group or "").strip()
+    if not group:
+        return config
+    return SafetyPolicyConfig(
+        input_rules=[
+            replace(rule, enabled=enabled) if rule.rule_group == group else rule
+            for rule in config.input_rules
+        ],
+        output_rules=[
+            replace(rule, enabled=enabled) if rule.rule_group == group else rule
+            for rule in config.output_rules
+        ],
+        rule_groups={**config.rule_groups, group: enabled},
     )
 
 

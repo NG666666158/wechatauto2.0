@@ -236,10 +236,20 @@ function KnowledgeEvidence({ item }: { item: KnowledgeSearchResult }) {
   const doc_id = item.doc_id || textFromEvidence(item.evidence, "doc_id")
   const source = item.source || textFromEvidence(item.evidence, "source")
   const chunk_index = item.chunk_index || textFromEvidence(item.evidence, "chunk_index")
+  const trustStatus = item.embedding_trust_status || "unknown"
+  const trustReason = item.embedding_trust_reason || ""
 
   return (
     <div className="mb-3 space-y-2 text-xs text-slate-500">
       <div className="flex flex-wrap gap-1.5">
+        <span className={`rounded-md border px-2 py-1 font-medium ${trustBadgeClass(trustStatus)}`}>
+          {formatKnowledgeTrustStatus(trustStatus)}
+        </span>
+        {trustReason ? (
+          <span className="rounded-md border border-orange-100 bg-orange-50 px-2 py-1 text-orange-700">
+            {formatKnowledgeTrustReason(trustReason)}
+          </span>
+        ) : null}
         {retrieval_sources.length ? (
           retrieval_sources.map((sourceName) => (
             <span key={sourceName} className="rounded-md border border-blue-100 bg-blue-50 px-2 py-1 font-medium text-blue-700">
@@ -261,9 +271,31 @@ function KnowledgeEvidence({ item }: { item: KnowledgeSearchResult }) {
         <EvidenceCell label="doc_id" value={doc_id || "-"} />
         <EvidenceCell label="chunk_index" value={chunk_index || "-"} />
       </div>
+      {item.embedding_provider ? <div className="truncate">embedding_provider: {item.embedding_provider}</div> : null}
       {source ? <div className="truncate">source: {source}</div> : null}
     </div>
   )
+}
+
+function trustBadgeClass(status: string) {
+  if (status === "trusted") return "border-emerald-100 bg-emerald-50 text-emerald-700"
+  if (status === "fake") return "border-orange-100 bg-orange-50 text-orange-700"
+  if (status === "untrusted") return "border-red-100 bg-red-50 text-red-700"
+  return "border-slate-200 bg-white text-slate-500"
+}
+
+function formatKnowledgeTrustStatus(status: string) {
+  if (status === "trusted") return "trusted"
+  if (status === "fake") return "fake embedding - review"
+  if (status === "untrusted") return "untrusted - review"
+  return "unknown trust"
+}
+
+function formatKnowledgeTrustReason(reason: string) {
+  if (reason === "fake_embedding_provider") return "fake_embedding_provider"
+  if (reason === "embedding_trust_not_declared") return "embedding_trust_not_declared"
+  if (reason === "embedding_provider_missing") return "embedding_provider_missing"
+  return reason
 }
 
 function EvidenceCell({ label, value }: { label: string; value: string }) {

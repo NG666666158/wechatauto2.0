@@ -262,6 +262,7 @@ class RuntimeStateStoreTests(TestCase):
             self.assertEqual(confirmed["confirmation_result"]["source"], "manual")
             self.assertEqual(confirmed["confirmation_result"]["resolution"], "confirmed")
             self.assertEqual(confirmed["confirmation_result"]["reason"], "operator saw it in chat")
+            self.assertEqual(confirmed["confirmation_result"]["resolution_note"], "operator saw it in chat")
             self.assertEqual(confirmed["confirmation_result"]["reviewed_by"], "manual-reviewer")
             self.assertEqual(confirmed["confirmation_result"]["operator"], "manual-reviewer")
             self.assertIn("resolved_at", confirmed["confirmation_result"])
@@ -299,6 +300,52 @@ class RuntimeStateStoreTests(TestCase):
             store.resolve_uncertain_send_job(send["send_job_id"], resolution="failed")
 
             self.assertFalse(store.conversation_has_unresolved_uncertain_send("friend:Alice"))
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_list_send_jobs_filters_uncertain_by_conversation_and_error_code(self) -> None:
+        from wechat_ai.storage.runtime_state import RuntimeStateStore
+
+        temp_dir = _fresh_dir(".tmp_runtime_state_send_filters")
+        try:
+            store = RuntimeStateStore(temp_dir / "runtime_state.sqlite3")
+            matching = store.create_send_job(
+                reply_job_id="reply-1",
+                conversation_id="friend:Alice",
+                target_title="Alice",
+                content="hi",
+                status="SEND_UNCERTAIN",
+            )
+            other_conversation = store.create_send_job(
+                reply_job_id="reply-2",
+                conversation_id="friend:Bob",
+                target_title="Bob",
+                content="hi",
+                status="SEND_UNCERTAIN",
+            )
+            resolved = store.create_send_job(
+                reply_job_id="reply-3",
+                conversation_id="friend:Alice",
+                target_title="Alice",
+                content="done",
+                status="SEND_UNCERTAIN",
+            )
+            matching_attempt = store.create_send_attempt(matching["send_job_id"])
+            store.finish_send_attempt(matching_attempt["attempt_id"], status="SEND_UNCERTAIN", error_code="SEND_NOT_CONFIRMED")
+            other_attempt = store.create_send_attempt(other_conversation["send_job_id"])
+            store.finish_send_attempt(other_attempt["attempt_id"], status="SEND_UNCERTAIN", error_code="TARGET_MISMATCH")
+            store.resolve_uncertain_send_job(resolved["send_job_id"], resolution="confirmed", reason="visible")
+
+            filtered = store.list_send_jobs(
+                status="SEND_UNCERTAIN",
+                unresolved=True,
+                conversation_id="friend:Alice",
+                error_code="SEND_NOT_CONFIRMED",
+            )
+            uncertain = store.list_uncertain_send_jobs(conversation_id="friend:Alice", error_code="SEND_NOT_CONFIRMED")
+
+            self.assertEqual([job["send_job_id"] for job in filtered], [matching["send_job_id"]])
+            self.assertEqual([job["send_job_id"] for job in uncertain], [matching["send_job_id"]])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

@@ -115,6 +115,8 @@ const checks = [
       return (
         source.includes("SendUncertainFilter") &&
         source.includes("filteredSendJobs") &&
+        source.includes("sendFilterQuery") &&
+        source.includes("listUncertainSendJobs(50, sendFilterQuery") &&
         source.includes("全部") &&
         source.includes("仅未确认") &&
         source.includes("仅有错误码") &&
@@ -152,6 +154,19 @@ const checks = [
         source.includes("after_screenshot") &&
         source.includes("无截图证据") &&
         source.includes("EvidenceRows")
+      )
+    },
+  },
+  {
+    name: "pending page renders manual send resolution audit",
+    run: () => {
+      const source = read("app/pending/page.tsx")
+      return (
+        source.includes("SendResolutionAudit") &&
+        source.includes("reviewed_by") &&
+        source.includes("resolved_at") &&
+        source.includes("resolution_note") &&
+        source.includes("此页面不会自动重发")
       )
     },
   },
@@ -211,7 +226,15 @@ const checks = [
     name: "knowledge page shows embedding provider trust status",
     run: () => {
       const source = read("app/knowledge/page.tsx")
-      return source.includes("embedding_provider") && source.includes("embedding_trusted") && source.includes("untrusted")
+      const apiSource = read("lib/api.ts")
+      return (
+        source.includes("embedding_provider") &&
+        source.includes("embedding_trusted") &&
+        source.includes("embedding_trust_status") &&
+        source.includes("fake_embedding_provider") &&
+        source.includes("untrusted") &&
+        apiSource.includes("embedding_trust_status")
+      )
     },
   },
   {
@@ -259,6 +282,22 @@ const checks = [
         source.includes("scheduleTickIntervalSeconds") &&
         shellSource.includes("getDesktopShellBridge") &&
         shellSource.includes("updatePreferences")
+      )
+    },
+  },
+  {
+    name: "settings page exposes controlled safety rule groups and reset",
+    run: () => {
+      const source = read("app/settings/page.tsx")
+      const apiSource = read("lib/api.ts")
+      return (
+        source.includes("safetyRuleGroups") &&
+        source.includes("prompt_injection") &&
+        source.includes("sensitive_information") &&
+        source.includes("business_risk") &&
+        source.includes("reset_to_defaults") &&
+        apiSource.includes("SafetyPolicyPatch") &&
+        apiSource.includes("rule_groups")
       )
     },
   },

@@ -17,11 +17,11 @@ from wechat_ai.identity import identity_admin
 from wechat_ai.logging_utils import sanitize_text, tail_jsonl_events, utc_timestamp
 from wechat_ai.models import Message
 from wechat_ai.orchestration.prompt_builder import PromptBuilder
-from wechat_ai.rag.embeddings import FakeEmbeddings
+from wechat_ai.rag.embeddings import EmbeddingProviderInfo, FakeEmbeddings
 from wechat_ai.rag.hybrid_retriever import HybridRetriever
 from wechat_ai.rag.keyword_retriever import KeywordRetriever
 from wechat_ai.rag.retriever import LocalIndexRetriever, index_has_trusted_embeddings
-from wechat_ai.runtime import SendCoordinator, UiActionLock
+from wechat_ai.runtime import SendCoordinator, UiActionLock, build_knowledge_evidence, build_knowledge_trust_metadata
 from wechat_ai.safety import SafetyPolicyEngine
 from wechat_ai.storage import RuntimeStateStore
 from wechat_ai.rag.web_knowledge_builder import WebKnowledgeBuilder
@@ -744,6 +744,10 @@ class DesktopAppService:
                     "text": cleaned_text,
                     "reason_code": str(fake_embeddings_precheck["reason_code"]),
                     "reason": str(fake_embeddings_precheck["reason"]),
+                    "knowledge_trust_status": str(fake_embeddings_precheck.get("knowledge_trust_status") or "unknown"),
+                    "knowledge_trust_reason": str(fake_embeddings_precheck.get("knowledge_trust_reason") or ""),
+                    "embedding_provider": fake_embeddings_precheck.get("embedding_provider"),
+                    "embedding_trusted": bool(fake_embeddings_precheck.get("embedding_trusted", False)),
                 }
         sender = self.reply_sender
         if sender is None and settings.real_send_enabled:
@@ -817,6 +821,23 @@ class DesktopAppService:
                 "reason_code": str(preflight["reason_code"]),
                 "reason": str(preflight["reason"]),
             }
+        settings = self.get_settings()
+        if settings.real_send_enabled:
+            knowledge_precheck = self._precheck_trusted_knowledge_embeddings()
+            if not knowledge_precheck["ok"]:
+                return {
+                    "status": "blocked",
+                    "action": action,
+                    "allowed": False,
+                    "conversation_id": normalized_id,
+                    "text": cleaned_text,
+                    "reason_code": str(knowledge_precheck["reason_code"]),
+                    "reason": str(knowledge_precheck["reason"]),
+                    "knowledge_trust_status": str(knowledge_precheck.get("knowledge_trust_status") or "unknown"),
+                    "knowledge_trust_reason": str(knowledge_precheck.get("knowledge_trust_reason") or ""),
+                    "embedding_provider": knowledge_precheck.get("embedding_provider"),
+                    "embedding_trusted": bool(knowledge_precheck.get("embedding_trusted", False)),
+                }
         if self.runtime_state_store.conversation_has_unresolved_uncertain_send(normalized_id):
             return {
                 "status": "blocked",
@@ -989,14 +1010,40 @@ class DesktopAppService:
             reviewed_by=reviewed_by,
         )
 
-    def list_send_jobs(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, object]]:
-        return self.runtime_state_store.list_send_jobs(status=status, limit=limit)
+    def list_send_jobs(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+        unresolved: bool | None = None,
+        conversation_id: str | None = None,
+        error_code: str | None = None,
+    ) -> list[dict[str, object]]:
+        return self.runtime_state_store.list_send_jobs(
+            status=status,
+            limit=limit,
+            unresolved=unresolved,
+            conversation_id=conversation_id,
+            error_code=error_code,
+        )
 
     def list_send_attempts(self, send_job_id: str, *, limit: int = 100) -> list[dict[str, object]]:
         return self.runtime_state_store.list_send_attempts(send_job_id, limit=limit)
 
-    def list_uncertain_send_jobs(self, *, limit: int = 100) -> list[dict[str, object]]:
-        return self.runtime_state_store.list_uncertain_send_jobs(limit=limit)
+    def list_uncertain_send_jobs(
+        self,
+        *,
+        limit: int = 100,
+        unresolved: bool | None = True,
+        conversation_id: str | None = None,
+        error_code: str | None = None,
+    ) -> list[dict[str, object]]:
+        return self.runtime_state_store.list_uncertain_send_jobs(
+            limit=limit,
+            unresolved=unresolved,
+            conversation_id=conversation_id,
+            error_code=error_code,
+        )
 
     def resolve_uncertain_send_job(
         self,
@@ -1046,8 +1093,21 @@ class DesktopAppService:
 
     def suggest_reply(self, conversation_id: str, message_text: str) -> ReplySuggestion:
         cleaned_text = str(message_text).strip()
+        knowledge_trust = self._knowledge_embedding_trust_metadata()
+        suggestion_trust = {
+            "knowledge_trust_status": str(knowledge_trust["embedding_trust_status"]),
+            "knowledge_trust_reason": str(knowledge_trust["embedding_trust_reason"]),
+            "embedding_provider": knowledge_trust["embedding_provider"],
+            "embedding_trusted": bool(knowledge_trust["embedding_trusted"]),
+        }
         if not cleaned_text:
-            return ReplySuggestion(conversation_id=conversation_id, input_text=message_text, suggestion="", status="empty_input")
+            return ReplySuggestion(
+                conversation_id=conversation_id,
+                input_text=message_text,
+                suggestion="",
+                status="empty_input",
+                **suggestion_trust,
+            )
         safety = self._safety_policy_engine().assess_input(cleaned_text)
         if safety.need_human_review:
             normalized_id = str(conversation_id).strip()
@@ -1079,6 +1139,7 @@ class DesktopAppService:
                 input_text=message_text,
                 suggestion="",
                 status="pending_review",
+                **suggestion_trust,
             )
         if self.reply_pipeline is None:
             suggestion = f"建议回复占位：{cleaned_text[:60]}"
@@ -1087,6 +1148,7 @@ class DesktopAppService:
                 input_text=message_text,
                 suggestion=suggestion,
                 status="not_implemented",
+                **suggestion_trust,
             )
         detail = self.get_conversation(conversation_id)
         contexts = [
@@ -1108,6 +1170,7 @@ class DesktopAppService:
             input_text=message_text,
             suggestion=suggestion,
             status="ready",
+            **suggestion_trust,
         )
 
     def list_conversations(self) -> list[ConversationListItem]:
@@ -1183,6 +1246,7 @@ class DesktopAppService:
         status = self.knowledge_importer.get_status()
         if not status.ready:
             return []
+        knowledge_trust = self._knowledge_embedding_trust_metadata(status=status)
         retriever = _build_hybrid_retriever(Path(status.index_path))
         results: list[dict[str, Any]] = []
         for chunk in retriever.retrieve(query, limit=limit):
@@ -1197,7 +1261,8 @@ class DesktopAppService:
                     if doc_id or chunk_index:
                         chunk_id = f"{doc_id}:{chunk_index}".strip(":")
             payload["chunk_id"] = chunk_id
-            payload.update(_build_knowledge_evidence(metadata if isinstance(metadata, dict) else {}))
+            payload.update(build_knowledge_evidence(metadata if isinstance(metadata, dict) else {}))
+            payload.update(knowledge_trust)
             results.append(payload)
         return results
 
@@ -1205,13 +1270,38 @@ class DesktopAppService:
         status = self.knowledge_importer.get_status()
         if not status.ready:
             return {"ok": True}
+        trust = self._knowledge_embedding_trust_metadata(status=status)
         if not index_has_trusted_embeddings(Path(status.index_path)):
+            reason_code = (
+                "UNTRUSTED_FAKE_EMBEDDINGS"
+                if trust["embedding_trust_status"] == "fake"
+                else "UNTRUSTED_KNOWLEDGE_EMBEDDINGS"
+            )
             return {
                 "ok": False,
-                "reason_code": "UNTRUSTED_FAKE_EMBEDDINGS",
+                "reason_code": reason_code,
                 "reason": "knowledge index embeddings are not explicitly trusted for real sending",
+                "knowledge_trust_status": trust["embedding_trust_status"],
+                "knowledge_trust_reason": trust["embedding_trust_reason"],
+                "embedding_provider": trust["embedding_provider"],
+                "embedding_trusted": trust["embedding_trusted"],
             }
         return {"ok": True}
+
+    def _knowledge_embedding_trust_metadata(self, *, status: Any | None = None) -> dict[str, Any]:
+        resolved_status = status or self.knowledge_importer.get_status()
+        info = EmbeddingProviderInfo.from_index_payload(
+            {
+                "embedding_provider": getattr(resolved_status, "embedding_provider", None),
+                "embedding_trusted": getattr(resolved_status, "embedding_trusted", False),
+            }
+        )
+        return build_knowledge_trust_metadata(
+            provider=info.provider,
+            trusted=info.trusted,
+            trust_status=info.trust_status,
+            trust_reason=info.trust_reason,
+        )
 
     def get_knowledge_status(self) -> dict[str, Any]:
         return asdict(self.knowledge_importer.get_status())
@@ -1542,50 +1632,6 @@ def _build_hybrid_retriever(index_path: Path) -> HybridRetriever:
         dense_retriever=LocalIndexRetriever(index_path=index_path, embeddings=FakeEmbeddings()),
         keyword_retriever=KeywordRetriever(index_path=index_path),
     )
-
-
-def _build_knowledge_evidence(metadata: Mapping[str, Any]) -> dict[str, Any]:
-    retrieval_sources = _split_evidence_list(metadata.get("retrieval_sources"))
-    match_terms = _split_evidence_list(metadata.get("match_terms"))
-    dense_score = _optional_float(metadata.get("dense_score"))
-    keyword_score = _optional_float(metadata.get("keyword_score"))
-    evidence: dict[str, Any] = {
-        "metadata": dict(metadata),
-        "retrieval_sources": retrieval_sources,
-        "dense_score": dense_score,
-        "keyword_score": keyword_score,
-        "match_terms": match_terms,
-        "doc_id": str(metadata.get("doc_id") or "").strip(),
-        "source": str(metadata.get("source") or "").strip(),
-        "chunk_index": str(metadata.get("chunk_index") or "").strip(),
-    }
-    return {
-        "evidence": evidence,
-        "retrieval_sources": retrieval_sources,
-        "dense_score": dense_score,
-        "keyword_score": keyword_score,
-        "match_terms": match_terms,
-        "doc_id": evidence["doc_id"],
-        "source": evidence["source"],
-        "chunk_index": evidence["chunk_index"],
-    }
-
-
-def _split_evidence_list(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, (list, tuple, set)):
-        return [str(item).strip() for item in value if str(item).strip()]
-    return [item.strip() for item in str(value).split(",") if item.strip()]
-
-
-def _optional_float(value: Any) -> float | None:
-    if value is None or value == "":
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _windows_pid_exists(pid: int | None) -> bool:

@@ -230,6 +230,7 @@ class RuntimeStateStore:
                 "source": "manual",
                 "resolution": normalized_resolution,
                 "reason": str(reason or ""),
+                "resolution_note": str(reason or ""),
                 "reviewed_by": reviewer,
                 "operator": reviewer,
                 "resolved_at": utc_timestamp(),
@@ -373,13 +374,60 @@ class RuntimeStateStore:
             return self._fetch_all_public("SELECT * FROM reply_jobs WHERE status = ? ORDER BY created_at DESC LIMIT ?", (status, limit))
         return self._fetch_all_public("SELECT * FROM reply_jobs ORDER BY created_at DESC LIMIT ?", (limit,))
 
-    def list_send_jobs(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    def list_send_jobs(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+        unresolved: bool | None = None,
+        conversation_id: str | None = None,
+        error_code: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
         if status:
-            return self._fetch_all_public("SELECT * FROM send_jobs WHERE status = ? ORDER BY created_at DESC LIMIT ?", (status, limit))
-        return self._fetch_all_public("SELECT * FROM send_jobs ORDER BY created_at DESC LIMIT ?", (limit,))
+            clauses.append("send_jobs.status = ?")
+            params.append(str(status).strip())
+        if unresolved is True:
+            clauses.append("send_jobs.status = 'SEND_UNCERTAIN'")
+        elif unresolved is False:
+            clauses.append("send_jobs.status != 'SEND_UNCERTAIN'")
+        if conversation_id:
+            clauses.append("send_jobs.conversation_id = ?")
+            params.append(str(conversation_id).strip())
+        if error_code:
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1 FROM send_attempts
+                    WHERE send_attempts.send_job_id = send_jobs.send_job_id
+                      AND send_attempts.error_code = ?
+                )
+                """
+            )
+            params.append(str(error_code).strip())
+        where_sql = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        return self._fetch_all_public(
+            f"SELECT * FROM send_jobs{where_sql} ORDER BY created_at DESC LIMIT ?",
+            tuple(params),
+        )
 
-    def list_uncertain_send_jobs(self, *, limit: int = 100) -> list[dict[str, Any]]:
-        return self.list_send_jobs(status="SEND_UNCERTAIN", limit=limit)
+    def list_uncertain_send_jobs(
+        self,
+        *,
+        limit: int = 100,
+        unresolved: bool | None = True,
+        conversation_id: str | None = None,
+        error_code: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.list_send_jobs(
+            status=None if unresolved is False else "SEND_UNCERTAIN",
+            limit=limit,
+            unresolved=unresolved,
+            conversation_id=conversation_id,
+            error_code=error_code,
+        )
 
     def list_unresolved_uncertain_by_conversation(
         self,

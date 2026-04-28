@@ -13,7 +13,7 @@ TMP_ROOT.mkdir(exist_ok=True)
 
 
 from wechat_ai import RetrievedChunk  # type: ignore  # noqa: E402
-from wechat_ai.rag.embeddings import BaseEmbeddings, FakeEmbeddings  # type: ignore  # noqa: E402
+from wechat_ai.rag.embeddings import BaseEmbeddings, EmbeddingProviderInfo, FakeEmbeddings  # type: ignore  # noqa: E402
 from wechat_ai.rag.reranker import NoOpReranker  # type: ignore  # noqa: E402
 from wechat_ai.rag.ingest import build_knowledge_index  # type: ignore  # noqa: E402
 from wechat_ai.rag.embeddings import TrustedLocalEmbeddings  # type: ignore  # noqa: E402
@@ -183,6 +183,24 @@ class LocalIndexRetrieverTests(unittest.TestCase):
         self.assertEqual(index_embedding_provider(index_path), "TrustedFoo")
         self.assertFalse(index_uses_fake_embeddings(index_path))
         self.assertFalse(index_has_trusted_embeddings(index_path))
+
+    def test_embedding_provider_info_exposes_trust_status_and_reason(self) -> None:
+        fake_info = EmbeddingProviderInfo.from_index_payload(
+            {"embedding_provider": "FakeEmbeddings", "embedding_trusted": False}
+        )
+        trusted_info = EmbeddingProviderInfo.from_index_payload(
+            {"embedding_provider": "TrustedFoo", "embedding_trusted": True}
+        )
+        legacy_info = EmbeddingProviderInfo.from_index_payload(
+            {"embedding_provider": "TrustedFoo"}
+        )
+
+        self.assertEqual(fake_info.trust_status, "fake")
+        self.assertEqual(fake_info.trust_reason, "fake_embedding_provider")
+        self.assertEqual(trusted_info.trust_status, "trusted")
+        self.assertEqual(trusted_info.trust_reason, "")
+        self.assertEqual(legacy_info.trust_status, "untrusted")
+        self.assertEqual(legacy_info.trust_reason, "embedding_trust_not_declared")
 
     def test_build_knowledge_index_defaults_to_fake_untrusted_embeddings(self) -> None:
         temp_dir = self._make_temp_dir()

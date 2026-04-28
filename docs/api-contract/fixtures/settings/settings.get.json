@@ -22,7 +22,8 @@
     "run_silently": true,
     "safety_policy": {
       "input_rules": [],
-      "output_rules": []
+      "output_rules": [],
+      "rule_groups": {}
     },
     "schedule_blocks": [],
     "schedule_enabled": false,

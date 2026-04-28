@@ -65,9 +65,17 @@ async function assertApiClientContract() {
   const replyReasonCodes: ReplyJob["reason_codes"] = replyJobs.data?.[0]?.reason_codes
   const replySendStatus: string | undefined = approvedReplyJob.data?.send_status
   const replySendResult: ReplyJob["send_result"] = approvedReplyJob.data?.send_result
-  const sendJobs: ApiResponse<SendJob[]> = await apiClient.listSendJobs("SEND_UNCERTAIN", 20)
+  const sendJobs: ApiResponse<SendJob[]> = await apiClient.listSendJobs("SEND_UNCERTAIN", 20, {
+    unresolved: true,
+    conversation_id: "friend:alice",
+    error_code: "SEND_NOT_CONFIRMED",
+  })
   const sendAttempts: ApiResponse<SendAttempt[]> = await apiClient.listSendAttempts("send_001", 20)
-  const uncertainSendJobs: ApiResponse<SendJob[]> = await apiClient.listUncertainSendJobs(20)
+  const uncertainSendJobs: ApiResponse<SendJob[]> = await apiClient.listUncertainSendJobs(20, {
+    unresolved: true,
+    conversation_id: "friend:alice",
+    error_code: "SEND_NOT_CONFIRMED",
+  })
   const uncertainSendEvidence: SendJob["confirmation_result"] = {
     reason: "send confirmation timed out",
     resolution: "manual_review",
@@ -129,10 +137,15 @@ async function assertApiClientContract() {
     dense_score: 0.82,
     keyword_score: 0.67,
     match_terms: ["trial", "policy"],
+    embedding_provider: "FakeEmbeddings",
+    embedding_trusted: false,
+    embedding_trust_status: "fake",
+    embedding_trust_reason: "fake_embedding_provider",
   }
   const knowledgeDenseScore: number | null | undefined = knowledgeSearch.data?.[0]?.dense_score
   const knowledgeKeywordScore: number | null | undefined = knowledgeSearch.data?.[0]?.keyword_score
   const knowledgeMatchTerms: string[] | undefined = knowledgeSearch.data?.[0]?.match_terms
+  const knowledgeTrustStatus: "trusted" | "fake" | "untrusted" | "unknown" | undefined = knowledgeSearch.data?.[0]?.embedding_trust_status
   const knowledgeImport: ApiResponse<KnowledgeImportResult> = await apiClient.importKnowledgeFiles([
     "C:\\docs\\product.pdf",
   ])

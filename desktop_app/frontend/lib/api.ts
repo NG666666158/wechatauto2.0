@@ -88,6 +88,10 @@ export type KnowledgeSearchResult = {
   doc_id?: string
   source?: string
   chunk_index?: string
+  embedding_provider?: string | null
+  embedding_trusted?: boolean | null
+  embedding_trust_status?: "trusted" | "fake" | "untrusted" | "unknown"
+  embedding_trust_reason?: string
 }
 
 export type KnowledgeFileImport = {
@@ -143,6 +147,12 @@ export type RecentLogFilters = {
   trace_id?: string
 }
 
+export type SendJobListFilters = {
+  unresolved?: boolean
+  conversation_id?: string
+  error_code?: string
+}
+
 export type WorkHours = {
   enabled: boolean
   start: string
@@ -158,6 +168,7 @@ export type PrivacyPolicy = {
 
 export type SafetyPatternRule = {
   rule_id: string
+  rule_group?: string
   enabled: boolean
   match_type: string
   patterns: string[]
@@ -168,6 +179,12 @@ export type SafetyPatternRule = {
 export type SafetyPolicyConfig = {
   input_rules: SafetyPatternRule[]
   output_rules: SafetyPatternRule[]
+  rule_groups?: Record<string, boolean>
+}
+
+export type SafetyPolicyPatch = Partial<SafetyPolicyConfig> & {
+  rule_groups?: Record<string, boolean>
+  reset_to_defaults?: boolean
 }
 
 export type Settings = {
@@ -201,31 +218,11 @@ export type Settings = {
 }
 
 export type SettingsPatch = Partial<
-  Pick<
+  Omit<
     Settings,
-    | "auto_reply_enabled"
-    | "reply_style"
-    | "new_customer_auto_create"
-    | "sensitive_message_review"
-    | "work_hours"
-    | "knowledge_chunk_size"
-    | "knowledge_chunk_overlap"
-    | "run_silently"
-    | "esc_action"
-    | "force_stop_hotkey"
-    | "schedule_enabled"
-    | "schedule_blocks"
-    | "privacy"
-    | "human_takeover_sessions"
-    | "paused_sessions"
-    | "whitelist"
-    | "blacklist"
-    | "request_timeout_seconds"
-    | "retry_attempts"
-    | "real_send_enabled"
     | "safety_policy"
   >
->
+> & { safety_policy?: SafetyPolicyPatch }
 
 export type PrivacyPolicyPatch = Partial<PrivacyPolicy>
 
@@ -266,6 +263,10 @@ export type ReplySuggestion = {
   input_text: string
   suggestion: string
   status: string
+  knowledge_trust_status?: "trusted" | "fake" | "untrusted" | "unknown"
+  knowledge_trust_reason?: string
+  embedding_provider?: string | null
+  embedding_trusted?: boolean | null
 }
 
 export type ReplyJob = {
@@ -292,6 +293,11 @@ export type ReplyJob = {
 export type SendConfirmationResult = Record<string, unknown> & {
   reason?: unknown
   resolution?: unknown
+  reviewed_by?: unknown
+  operator?: unknown
+  resolved_at?: unknown
+  resolution_note?: unknown
+  review_reason?: unknown
   visible_messages?: unknown
   matched_text?: unknown
   before_screenshot?: unknown
@@ -481,14 +487,14 @@ export const apiClient = {
     post<ReplyJob>(`/jobs/reply/${encodeURIComponent(replyJobId)}/approve`, body),
   cancelReplyJob: (replyJobId: string, body?: ReplyJobCancelBody) =>
     post<ReplyJob>(`/jobs/reply/${encodeURIComponent(replyJobId)}/cancel`, body),
-  listSendJobs: (status?: string, limit = 100) =>
-    request<SendJob[]>(withQuery("/jobs/send", { status, limit })),
+  listSendJobs: (status?: string, limit = 100, filters: SendJobListFilters = {}) =>
+    request<SendJob[]>(withQuery("/jobs/send", { status, limit, ...filters })),
   listSendAttempts: (sendJobId: string, limit = 100) =>
     request<SendAttempt[]>(withQuery(`/jobs/send/${encodeURIComponent(sendJobId)}/attempts`, { limit })),
   resolveSendJob: (sendJobId: string, body: SendJobResolveBody) =>
     post<SendJob>(`/jobs/send/${encodeURIComponent(sendJobId)}/resolve`, body),
-  listUncertainSendJobs: (limit = 100) =>
-    request<SendJob[]>(withQuery("/jobs/send-uncertain", { limit })),
+  listUncertainSendJobs: (limit = 100, filters: SendJobListFilters = {}) =>
+    request<SendJob[]>(withQuery("/jobs/send-uncertain", { limit, ...filters })),
   listCustomers: () => request<Customer[]>("/customers"),
   getCustomer: (customerId: string) => request<Customer>(`/customers/${encodeURIComponent(customerId)}`),
   listIdentityDrafts: () => request<IdentityDraft[]>("/identity/drafts"),

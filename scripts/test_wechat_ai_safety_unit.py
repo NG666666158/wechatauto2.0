@@ -88,6 +88,62 @@ class SafetyPolicyEngineTests(TestCase):
         self.assertFalse(decision.need_human_review)
         self.assertEqual(decision.reason_codes, [])
 
+    def test_invalid_regex_rule_is_ignored_instead_of_raising(self) -> None:
+        from wechat_ai.safety import SafetyPatternRule, SafetyPolicyConfig, SafetyPolicyEngine
+
+        config = SafetyPolicyConfig(
+            input_rules=[
+                SafetyPatternRule(
+                    rule_id="broken_regex",
+                    rule_group="sensitive_information",
+                    patterns=["("],
+                    reason_code="SENSITIVE_INFORMATION",
+                    risk_level="HIGH",
+                    match_type="regex",
+                )
+            ]
+        )
+
+        decision = SafetyPolicyEngine(config).assess_input("normal customer question")
+
+        self.assertTrue(decision.allowed_to_generate)
+        self.assertTrue(decision.allowed_to_send)
+        self.assertFalse(decision.need_human_review)
+        self.assertEqual(decision.reason_codes, [])
+
+    def test_rule_group_toggle_disables_all_matching_rules(self) -> None:
+        from wechat_ai.safety import SafetyPatternRule, SafetyPolicyConfig, SafetyPolicyEngine, set_rule_group_enabled
+
+        config = SafetyPolicyConfig(
+            input_rules=[
+                SafetyPatternRule(
+                    rule_id="business_intent_input",
+                    rule_group="business_risk",
+                    patterns=["price"],
+                    reason_code="HIGH_RISK_INTENT",
+                    risk_level="MEDIUM",
+                )
+            ],
+            output_rules=[
+                SafetyPatternRule(
+                    rule_id="business_commitment_output",
+                    rule_group="business_risk",
+                    patterns=["price"],
+                    reason_code="HIGH_RISK_COMMITMENT",
+                    risk_level="MEDIUM",
+                )
+            ],
+        )
+        config = set_rule_group_enabled(config, "business_risk", False)
+
+        input_decision = SafetyPolicyEngine(config).assess_input("can you change the price")
+        output_decision = SafetyPolicyEngine(config).assess_output("we can promise the price")
+
+        self.assertTrue(input_decision.allowed_to_send)
+        self.assertTrue(output_decision.allowed_to_send)
+        self.assertFalse(input_decision.need_human_review)
+        self.assertFalse(output_decision.need_human_review)
+
     def test_desktop_send_reply_blocks_high_risk_manual_reply(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 

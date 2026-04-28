@@ -53,6 +53,7 @@ class PrivacyPolicyData(BaseModel):
 
 class SafetyPatternRuleData(BaseModel):
     rule_id: str = ""
+    rule_group: str = ""
     enabled: bool = True
     match_type: str = "keyword"
     patterns: list[str] = Field(default_factory=list)
@@ -63,6 +64,7 @@ class SafetyPatternRuleData(BaseModel):
 class SafetyPolicyConfigData(BaseModel):
     input_rules: list[SafetyPatternRuleData] = Field(default_factory=list)
     output_rules: list[SafetyPatternRuleData] = Field(default_factory=list)
+    rule_groups: dict[str, bool] = Field(default_factory=dict)
 
 
 class SettingsData(BaseModel):
@@ -132,6 +134,10 @@ class ReplySuggestionData(BaseModel):
     input_text: str = ""
     suggestion: str = ""
     status: str = "ready"
+    knowledge_trust_status: str = "unknown"
+    knowledge_trust_reason: str = ""
+    embedding_provider: str | None = None
+    embedding_trusted: bool = False
 
 
 class SendReplyResultData(BaseModel):
@@ -198,6 +204,10 @@ class KnowledgeSearchResultData(BaseModel):
     doc_id: str = ""
     source: str = ""
     chunk_index: str = ""
+    embedding_provider: str | None = None
+    embedding_trusted: bool = False
+    embedding_trust_status: str = "unknown"
+    embedding_trust_reason: str = ""
 
 
 class KnowledgeFileImportData(BaseModel):

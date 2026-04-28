@@ -18,6 +18,7 @@ import {
   KeyRound,
   MessageSquare,
   Power,
+  RotateCcw,
   ShieldAlert,
   ShieldBan,
   UserPlus,
@@ -33,6 +34,24 @@ const advancedItems = [
   { label: "日志管理", icon: FileClock },
   { label: "系统信息", icon: Info },
 ]
+
+const safetyRuleGroups = [
+  {
+    id: "prompt_injection",
+    title: "Prompt 注入防护",
+    desc: "忽略规则、系统提示词泄露等输入保持高风险拦截",
+  },
+  {
+    id: "sensitive_information",
+    title: "敏感信息防护",
+    desc: "验证码、密码、token、账号等输入输出保持高风险拦截",
+  },
+  {
+    id: "business_risk",
+    title: "业务风险规则",
+    desc: "退款、价格、账号、合同等业务意图和承诺进入人工审核",
+  },
+] as const
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("基础设置")
@@ -243,23 +262,33 @@ function BaseSettings({
   updatePrivacy: (patch: Partial<PrivacyPolicy>, successMessage?: string) => void
   setSensitiveReview: (nextValue: boolean) => void
 }) {
-  const businessIntentRule = settings.safety_policy.input_rules.find((rule) => rule.reason_code === "HIGH_RISK_INTENT")
-
-  function setBusinessIntentRule(nextValue: boolean) {
-    if (!businessIntentRule) {
-      return
+  function isRuleGroupEnabled(ruleGroup: string) {
+    const configured = settings.safety_policy.rule_groups?.[ruleGroup]
+    if (configured !== undefined) {
+      return configured
     }
+    const rules = [...settings.safety_policy.input_rules, ...settings.safety_policy.output_rules].filter(
+      (rule) => rule.rule_group === ruleGroup,
+    )
+    return rules.length > 0 ? rules.every((rule) => rule.enabled) : false
+  }
+
+  function setRuleGroup(ruleGroup: string, nextValue: boolean) {
     updateSettings(
       {
         safety_policy: {
-          ...settings.safety_policy,
-          input_rules: settings.safety_policy.input_rules.map((rule) =>
-            rule.rule_id === businessIntentRule.rule_id ? { ...rule, enabled: nextValue } : rule,
-          ),
+          rule_groups: {
+            ...(settings.safety_policy.rule_groups ?? {}),
+            [ruleGroup]: nextValue,
+          },
         },
       },
-      nextValue ? "安全业务规则已开启" : "安全业务规则已关闭",
+      nextValue ? "安全规则组已开启" : "安全规则组已关闭",
     )
+  }
+
+  function resetSafetyPolicy() {
+    updateSettings({ safety_policy: { reset_to_defaults: true } }, "安全策略已恢复默认")
   }
 
   return (
@@ -312,18 +341,28 @@ function BaseSettings({
         desc="涉及敏感内容的消息需人工审核后回复"
         right={<Switch checked={settings.sensitive_message_review} disabled={pending} onChange={setSensitiveReview} />}
       />
+      {safetyRuleGroups.map((group) => (
+        <SettingRow
+          key={group.id}
+          iconBg={group.id === "business_risk" ? "bg-amber-500" : "bg-rose-500"}
+          icon={<ShieldAlert className="h-5 w-5 text-white" />}
+          title={group.title}
+          desc={group.desc}
+          right={
+            <Switch
+              checked={isRuleGroupEnabled(group.id)}
+              disabled={pending}
+              onChange={(value) => setRuleGroup(group.id, value)}
+            />
+          }
+        />
+      ))}
       <SettingRow
-        iconBg="bg-amber-500"
-        icon={<ShieldAlert className="h-5 w-5 text-white" />}
-        title="业务风险规则"
-        desc={`退款、价格、账号等输入触发人工审核；当前 ${businessIntentRule?.patterns.length ?? 0} 个默认关键词`}
-        right={
-          <Switch
-            checked={businessIntentRule?.enabled ?? false}
-            disabled={pending || !businessIntentRule}
-            onChange={setBusinessIntentRule}
-          />
-        }
+        iconBg="bg-slate-600"
+        icon={<RotateCcw className="h-5 w-5 text-white" />}
+        title="恢复默认安全策略"
+        desc="恢复 prompt 注入、敏感信息、业务风险的默认规则组配置"
+        right={<IconButton label="恢复默认" disabled={pending} onClick={resetSafetyPolicy} />}
       />
       <SettingRow
         iconBg="bg-slate-600"
@@ -671,6 +710,28 @@ function NumberInput({
       />
       {suffix ? <span className="text-xs text-slate-400">{suffix}</span> : null}
     </label>
+  )
+}
+
+function IconButton({
+  label,
+  disabled,
+  onClick,
+}: {
+  label: string
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:border-blue-200 hover:bg-blue-50/50 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      <RotateCcw className="h-4 w-4 text-slate-500" />
+      {label}
+    </button>
   )
 }
 

@@ -1762,6 +1762,32 @@
             "title": "Doc Id",
             "type": "string"
           },
+          "embedding_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Provider"
+          },
+          "embedding_trust_reason": {
+            "default": "",
+            "title": "Embedding Trust Reason",
+            "type": "string"
+          },
+          "embedding_trust_status": {
+            "default": "unknown",
+            "title": "Embedding Trust Status",
+            "type": "string"
+          },
+          "embedding_trusted": {
+            "default": false,
+            "title": "Embedding Trusted",
+            "type": "boolean"
+          },
           "evidence": {
             "additionalProperties": true,
             "title": "Evidence",
@@ -2142,9 +2168,35 @@
             "title": "Conversation Id",
             "type": "string"
           },
+          "embedding_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Provider"
+          },
+          "embedding_trusted": {
+            "default": false,
+            "title": "Embedding Trusted",
+            "type": "boolean"
+          },
           "input_text": {
             "default": "",
             "title": "Input Text",
+            "type": "string"
+          },
+          "knowledge_trust_reason": {
+            "default": "",
+            "title": "Knowledge Trust Reason",
+            "type": "string"
+          },
+          "knowledge_trust_status": {
+            "default": "unknown",
+            "title": "Knowledge Trust Status",
             "type": "string"
           },
           "status": {
@@ -2415,6 +2467,11 @@
             "title": "Risk Level",
             "type": "string"
           },
+          "rule_group": {
+            "default": "",
+            "title": "Rule Group",
+            "type": "string"
+          },
           "rule_id": {
             "default": "",
             "title": "Rule Id",
@@ -2489,6 +2546,18 @@
             ],
             "title": "Risk Level"
           },
+          "rule_group": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Group"
+          },
           "rule_id": {
             "maxLength": 128,
             "minLength": 1,
@@ -2517,6 +2586,13 @@
             },
             "title": "Output Rules",
             "type": "array"
+          },
+          "rule_groups": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Rule Groups",
+            "type": "object"
           }
         },
         "title": "SafetyPolicyConfigData",
@@ -2554,6 +2630,31 @@
               }
             ],
             "title": "Output Rules"
+          },
+          "reset_to_defaults": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reset To Defaults"
+          },
+          "rule_groups": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "boolean"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Groups"
           }
         },
         "title": "SafetyPolicyPatchRequest",
@@ -4339,6 +4440,56 @@
           },
           {
             "in": "query",
+            "name": "unresolved",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unresolved"
+            }
+          },
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error Code"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -4384,6 +4535,57 @@
       "get": {
         "operationId": "list_uncertain_send_jobs_api_v1_jobs_send_uncertain_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "unresolved",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": true,
+              "title": "Unresolved"
+            }
+          },
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error Code"
+            }
+          },
           {
             "in": "query",
             "name": "limit",

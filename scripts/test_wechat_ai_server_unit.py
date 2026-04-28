@@ -188,13 +188,41 @@ class FakeDesktopService:
             return [job for job in self.reply_jobs if job.get("status") == status]
         return list(self.reply_jobs)
 
-    def list_send_jobs(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, object]]:
+    def list_send_jobs(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+        unresolved: bool | None = None,
+        conversation_id: str | None = None,
+        error_code: str | None = None,
+    ) -> list[dict[str, object]]:
+        self.last_send_job_filters = {
+            "status": status,
+            "limit": limit,
+            "unresolved": unresolved,
+            "conversation_id": conversation_id,
+            "error_code": error_code,
+        }
         del limit
         if status == "SEND_UNCERTAIN":
             return list(self.uncertain_send_jobs)
         return list(self.uncertain_send_jobs)
 
-    def list_uncertain_send_jobs(self, *, limit: int = 100) -> list[dict[str, object]]:
+    def list_uncertain_send_jobs(
+        self,
+        *,
+        limit: int = 100,
+        unresolved: bool | None = None,
+        conversation_id: str | None = None,
+        error_code: str | None = None,
+    ) -> list[dict[str, object]]:
+        self.last_uncertain_send_filters = {
+            "limit": limit,
+            "unresolved": unresolved,
+            "conversation_id": conversation_id,
+            "error_code": error_code,
+        }
         del limit
         return list(self.uncertain_send_jobs)
 
@@ -289,6 +317,7 @@ class FakeDesktopService:
                     "reason": reason or "",
                     "reviewed_by": reviewed_by,
                     "operator": reviewed_by,
+                    "resolved_at": "2026-04-28T00:00:02Z",
                 }
                 return dict(job)
         raise KeyError(send_job_id)
@@ -414,6 +443,10 @@ class FakeDesktopService:
                 "dense_score": 0.82,
                 "keyword_score": 0.67,
                 "match_terms": ["trial", "policy"],
+                "embedding_provider": "FakeEmbeddings",
+                "embedding_trusted": False,
+                "embedding_trust_status": "fake",
+                "embedding_trust_reason": "fake_embedding_provider",
             }
         ][:limit]
 
@@ -1183,6 +1216,29 @@ def test_settings_endpoint_round_trips_safety_policy() -> None:
     assert updated["data"]["safety_policy"]["input_rules"][0]["enabled"] is False
 
 
+def test_settings_endpoint_accepts_safety_rule_group_and_reset_patch() -> None:
+    from wechat_ai.server import create_app
+
+    service = FakeDesktopService()
+    client = TestClient(create_app(desktop_service=service))
+
+    disabled = client.patch(
+        "/api/v1/settings",
+        json={"safety_policy": {"rule_groups": {"business_risk": False}}},
+    )
+    restored = client.patch(
+        "/api/v1/settings",
+        json={"safety_policy": {"reset_to_defaults": True}},
+    )
+
+    assert disabled.status_code == 200
+    assert disabled.json()["success"] is True
+    assert disabled.json()["data"]["safety_policy"]["rule_groups"]["business_risk"] is False
+    assert restored.status_code == 200
+    assert restored.json()["success"] is True
+    assert service.settings["safety_policy"]["reset_to_defaults"] is True
+
+
 def test_frontend_customer_identity_and_knowledge_endpoints_are_available() -> None:
     from wechat_ai.server import create_app
 
@@ -1212,6 +1268,10 @@ def test_frontend_customer_identity_and_knowledge_endpoints_are_available() -> N
     assert search["data"][0]["doc_id"] == "faq"
     assert search["data"][0]["source"] == "faq.md"
     assert search["data"][0]["chunk_index"] == "0"
+    assert search["data"][0]["embedding_provider"] == "FakeEmbeddings"
+    assert search["data"][0]["embedding_trusted"] is False
+    assert search["data"][0]["embedding_trust_status"] == "fake"
+    assert search["data"][0]["embedding_trust_reason"] == "fake_embedding_provider"
     assert imported["data"]["index_rebuilt"] is True
     assert web_build["data"]["status"] == "built"
 
@@ -1280,10 +1340,15 @@ def test_frontend_ops_privacy_and_environment_endpoints_are_available() -> None:
 def test_runtime_jobs_endpoints_expose_send_uncertain_queue() -> None:
     from wechat_ai.server import create_app
 
-    client = TestClient(create_app(desktop_service=FakeDesktopService()))
+    service = FakeDesktopService()
+    client = TestClient(create_app(desktop_service=service))
 
-    send_jobs = client.get("/api/v1/jobs/send?status=SEND_UNCERTAIN").json()
-    uncertain = client.get("/api/v1/jobs/send-uncertain").json()
+    send_jobs = client.get(
+        "/api/v1/jobs/send?status=SEND_UNCERTAIN&unresolved=true&conversation_id=friend%3Aalice&error_code=SEND_NOT_CONFIRMED"
+    ).json()
+    uncertain = client.get(
+        "/api/v1/jobs/send-uncertain?unresolved=true&conversation_id=friend%3Aalice&error_code=SEND_NOT_CONFIRMED"
+    ).json()
     attempts = client.get("/api/v1/jobs/send/send_001/attempts").json()
     reply_jobs = client.get("/api/v1/jobs/reply").json()
 
@@ -1294,6 +1359,19 @@ def test_runtime_jobs_endpoints_expose_send_uncertain_queue() -> None:
     assert attempts["data"][0]["attempt_id"] == "attempt_001"
     assert attempts["data"][0]["before_screenshot"] == "screens/before.png"
     assert reply_jobs["data"][0]["reply_job_id"] == "reply_001"
+    assert service.last_send_job_filters == {
+        "status": "SEND_UNCERTAIN",
+        "limit": 100,
+        "unresolved": True,
+        "conversation_id": "friend:alice",
+        "error_code": "SEND_NOT_CONFIRMED",
+    }
+    assert service.last_uncertain_send_filters == {
+        "limit": 100,
+        "unresolved": True,
+        "conversation_id": "friend:alice",
+        "error_code": "SEND_NOT_CONFIRMED",
+    }
 
 
 def test_runtime_jobs_manual_actions_update_reply_and_uncertain_send_jobs() -> None:
@@ -1349,6 +1427,7 @@ def test_runtime_jobs_manual_actions_update_reply_and_uncertain_send_jobs() -> N
     assert resolved.json()["data"]["status"] == "SENT_CONFIRMED"
     assert resolved.json()["data"]["confirmation_result"]["source"] == "manual"
     assert resolved.json()["data"]["confirmation_result"]["resolution"] == "confirmed"
+    assert resolved.json()["data"]["confirmation_result"]["reviewed_by"] == "operator"
     assert service.last_resolve_request == {
         "send_job_id": "send_001",
         "resolution": "confirmed",
@@ -1419,6 +1498,8 @@ def main() -> None:
     test_knowledge_mutation_requests_enforce_safe_boundaries()
     test_unexpected_errors_use_stable_error_shape()
     test_frontend_dashboard_and_settings_endpoints_are_available()
+    test_settings_endpoint_round_trips_safety_policy()
+    test_settings_endpoint_accepts_safety_rule_group_and_reset_patch()
     test_frontend_customer_identity_and_knowledge_endpoints_are_available()
     test_message_page_conversation_and_suggestion_endpoints_are_available()
     test_frontend_ops_privacy_and_environment_endpoints_are_available()

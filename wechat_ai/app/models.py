@@ -134,6 +134,10 @@ class ReplySuggestion:
     input_text: str
     suggestion: str
     status: str = "ready"
+    knowledge_trust_status: str = "unknown"
+    knowledge_trust_reason: str = ""
+    embedding_provider: str | None = None
+    embedding_trusted: bool = False
 
 
 @dataclass(slots=True)

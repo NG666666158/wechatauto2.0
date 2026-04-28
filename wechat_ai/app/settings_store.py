@@ -5,7 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Mapping
 
-from wechat_ai.safety import SafetyPatternRule, SafetyPolicyConfig, default_safety_policy_config
+from wechat_ai.safety import SafetyPatternRule, SafetyPolicyConfig, default_safety_policy_config, set_rule_group_enabled
 
 from .models import PrivacyPolicy, ScheduleBlock, SettingsSnapshot, WorkHours
 
@@ -103,7 +103,21 @@ class DesktopSettingsStore:
                         merged_privacy[nested_key] = nested_value
                 payload["privacy"] = merged_privacy
             elif key == "safety_policy" and isinstance(value, Mapping):
-                payload["safety_policy"] = value
+                current_policy = dict(payload["safety_policy"])
+                if bool(value.get("reset_to_defaults", False)):
+                    payload["safety_policy"] = {"reset_to_defaults": True}
+                elif (
+                    "rule_groups" in value
+                    and "input_rules" not in value
+                    and "output_rules" not in value
+                ):
+                    current_policy["rule_groups"] = value.get("rule_groups")
+                    current_policy["_apply_rule_groups"] = True
+                    payload["safety_policy"] = current_policy
+                else:
+                    for nested_key, nested_value in value.items():
+                        current_policy[nested_key] = nested_value
+                    payload["safety_policy"] = current_policy
             elif key in payload:
                 payload[key] = value
         return self._deserialize(payload)
@@ -117,10 +131,27 @@ def _string_list(value: object) -> list[str]:
 
 def _safety_policy(payload: Mapping[str, Any]) -> SafetyPolicyConfig:
     defaults = default_safety_policy_config()
-    return SafetyPolicyConfig(
-        input_rules=_safety_rules(payload.get("input_rules"), defaults.input_rules),
-        output_rules=_safety_rules(payload.get("output_rules"), defaults.output_rules),
+    if bool(payload.get("reset_to_defaults", False)):
+        return defaults
+    input_rules = _safety_rules(payload.get("input_rules"), defaults.input_rules)
+    output_rules = _safety_rules(payload.get("output_rules"), defaults.output_rules)
+    rule_groups_payload = payload.get("rule_groups")
+    config = SafetyPolicyConfig(
+        input_rules=input_rules,
+        output_rules=output_rules,
+        rule_groups=(
+            _rule_groups(rule_groups_payload, defaults.rule_groups)
+            if isinstance(rule_groups_payload, Mapping) and bool(payload.get("_apply_rule_groups", False))
+            else _derived_rule_groups(input_rules + output_rules, defaults.rule_groups)
+        ),
     )
+    if (
+        isinstance(rule_groups_payload, Mapping)
+        and bool(payload.get("_apply_rule_groups", False))
+    ):
+        for rule_group, enabled in config.rule_groups.items():
+            config = set_rule_group_enabled(config, rule_group, enabled)
+    return config
 
 
 def _safety_rules(value: object, defaults: list[SafetyPatternRule]) -> list[SafetyPatternRule]:
@@ -142,6 +173,7 @@ def _safety_rules(value: object, defaults: list[SafetyPatternRule]) -> list[Safe
         rules.append(
             SafetyPatternRule(
                 rule_id=rule_id,
+                rule_group=str(item.get("rule_group", default_rule.rule_group if default_rule else "")),
                 enabled=bool(item.get("enabled", default_rule.enabled if default_rule else True)),
                 match_type=str(item.get("match_type", default_rule.match_type if default_rule else "keyword")),
                 patterns=patterns,
@@ -150,3 +182,24 @@ def _safety_rules(value: object, defaults: list[SafetyPatternRule]) -> list[Safe
             )
         )
     return rules or defaults
+
+
+def _rule_groups(value: object, defaults: dict[str, bool]) -> dict[str, bool]:
+    rule_groups = dict(defaults)
+    if isinstance(value, Mapping):
+        for key, enabled in value.items():
+            group = str(key).strip()
+            if group:
+                rule_groups[group] = bool(enabled)
+    return rule_groups
+
+
+def _derived_rule_groups(rules: list[SafetyPatternRule], defaults: dict[str, bool]) -> dict[str, bool]:
+    rule_groups = dict(defaults)
+    grouped_rules: dict[str, list[SafetyPatternRule]] = {}
+    for rule in rules:
+        if rule.rule_group:
+            grouped_rules.setdefault(rule.rule_group, []).append(rule)
+    for group, group_rules in grouped_rules.items():
+        rule_groups[group] = all(rule.enabled for rule in group_rules)
+    return rule_groups

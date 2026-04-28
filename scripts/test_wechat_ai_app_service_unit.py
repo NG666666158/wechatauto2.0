@@ -337,6 +337,47 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_safety_policy_rule_group_patch_affects_input_and_output(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_safety_policy_rule_group")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+
+            updated = service.update_settings({"safety_policy": {"rule_groups": {"business_risk": False}}})
+
+            self.assertFalse(
+                next(rule for rule in updated.safety_policy.input_rules if rule.reason_code == "HIGH_RISK_INTENT").enabled
+            )
+            self.assertFalse(
+                next(
+                    rule for rule in updated.safety_policy.output_rules if rule.reason_code == "HIGH_RISK_COMMITMENT"
+                ).enabled
+            )
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_safety_policy_reset_to_defaults_restores_rule_groups(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_safety_policy_reset")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+            service.update_settings({"safety_policy": {"rule_groups": {"business_risk": False}}})
+
+            restored = service.update_settings({"safety_policy": {"reset_to_defaults": True}})
+
+            self.assertTrue(
+                next(rule for rule in restored.safety_policy.input_rules if rule.reason_code == "HIGH_RISK_INTENT").enabled
+            )
+            self.assertTrue(
+                next(
+                    rule for rule in restored.safety_policy.output_rules if rule.reason_code == "HIGH_RISK_COMMITMENT"
+                ).enabled
+            )
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_updated_safety_policy_affects_suggest_without_restart(self) -> None:
         from dataclasses import asdict, replace
 
@@ -562,6 +603,49 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_list_uncertain_send_jobs_accepts_operator_filters(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_uncertain_filters")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+            matching = service.runtime_state_store.create_send_job(
+                reply_job_id="reply-1",
+                conversation_id="friend:alice",
+                target_title="Alice",
+                content="hi",
+                status="SEND_UNCERTAIN",
+            )
+            other = service.runtime_state_store.create_send_job(
+                reply_job_id="reply-2",
+                conversation_id="friend:bob",
+                target_title="Bob",
+                content="hi",
+                status="SEND_UNCERTAIN",
+            )
+            matching_attempt = service.runtime_state_store.create_send_attempt(matching["send_job_id"])
+            service.runtime_state_store.finish_send_attempt(
+                matching_attempt["attempt_id"],
+                status="SEND_UNCERTAIN",
+                error_code="SEND_NOT_CONFIRMED",
+            )
+            other_attempt = service.runtime_state_store.create_send_attempt(other["send_job_id"])
+            service.runtime_state_store.finish_send_attempt(
+                other_attempt["attempt_id"],
+                status="SEND_UNCERTAIN",
+                error_code="TARGET_MISMATCH",
+            )
+
+            jobs = service.list_uncertain_send_jobs(
+                conversation_id="friend:alice",
+                error_code="SEND_NOT_CONFIRMED",
+                unresolved=True,
+            )
+
+            self.assertEqual([job["send_job_id"] for job in jobs], [matching["send_job_id"]])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_resolve_uncertain_send_job_updates_runtime_state(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 
@@ -587,6 +671,7 @@ class DesktopAppServiceTests(TestCase):
             self.assertEqual(failed["confirmation_result"]["source"], "manual")
             self.assertEqual(failed["confirmation_result"]["resolution"], "failed")
             self.assertEqual(failed["confirmation_result"]["reason"], "not visible after manual check")
+            self.assertEqual(failed["confirmation_result"]["resolution_note"], "not visible after manual check")
             self.assertEqual(failed["confirmation_result"]["reviewed_by"], "support-lead")
             self.assertEqual(failed["confirmation_result"]["operator"], "support-lead")
         finally:
@@ -664,6 +749,36 @@ class DesktopAppServiceTests(TestCase):
             self.assertEqual(result["reason_code"], "UNTRUSTED_FAKE_EMBEDDINGS")
             self.assertEqual(sender.sent, [])
             self.assertEqual(len(search_results), 1)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_real_send_enabled_blocks_legacy_untrusted_embedding_index_before_sender(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_untrusted_embedding_block")
+        try:
+            knowledge_dir = temp_dir / "knowledge"
+            knowledge_dir.mkdir(parents=True, exist_ok=True)
+            (knowledge_dir / "local_knowledge_index.json").write_text(
+                '{"embedding_provider":"TrustedFoo","chunks":[{"text":"refund policy","vector":[1.0],"metadata":{"doc_id":"faq"}}]}',
+                encoding="utf-8",
+            )
+            sender = FakeReplySender()
+            service = DesktopAppService(data_root=temp_dir, reply_sender=sender)
+            service.update_settings({"real_send_enabled": True})
+            service.record_conversation_message("friend:alice", sender="Alice", text="hello", direction="incoming")
+
+            result = service.send_reply("friend:alice", "refund answer")
+            search_results = service.search_knowledge("refund", limit=1)
+
+            self.assertEqual(result["status"], "blocked")
+            self.assertFalse(result["allowed"])
+            self.assertEqual(result["reason_code"], "UNTRUSTED_KNOWLEDGE_EMBEDDINGS")
+            self.assertEqual(result["knowledge_trust_status"], "untrusted")
+            self.assertEqual(result["knowledge_trust_reason"], "embedding_trust_not_declared")
+            self.assertEqual(sender.sent, [])
+            self.assertEqual(search_results[0]["embedding_trust_status"], "untrusted")
+            self.assertEqual(search_results[0]["embedding_trust_reason"], "embedding_trust_not_declared")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -1096,8 +1211,35 @@ class DesktopAppServiceTests(TestCase):
             self.assertIn("dense_score", results[0])
             self.assertIn("keyword_score", results[0])
             self.assertEqual(results[0]["metadata"]["doc_id"], results[0]["doc_id"])
+            self.assertEqual(results[0]["embedding_trust_status"], "fake")
+            self.assertEqual(results[0]["embedding_trust_reason"], "fake_embedding_provider")
+            self.assertEqual(results[0]["embedding_provider"], "FakeEmbeddings")
+            self.assertFalse(results[0]["embedding_trusted"])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_knowledge_evidence_helper_preserves_retrieval_metadata(self) -> None:
+        from wechat_ai.runtime import build_knowledge_evidence
+
+        evidence = build_knowledge_evidence(
+            {
+                "doc_id": "faq",
+                "source": "faq.md",
+                "chunk_index": 2,
+                "retrieval_sources": "dense, keyword",
+                "dense_score": "0.82",
+                "keyword_score": 0.67,
+                "match_terms": ["refund", " policy "],
+            }
+        )
+
+        self.assertEqual(evidence["retrieval_sources"], ["dense", "keyword"])
+        self.assertEqual(evidence["match_terms"], ["refund", "policy"])
+        self.assertEqual(evidence["dense_score"], 0.82)
+        self.assertEqual(evidence["keyword_score"], 0.67)
+        self.assertEqual(evidence["doc_id"], "faq")
+        self.assertEqual(evidence["source"], "faq.md")
+        self.assertEqual(evidence["chunk_index"], "2")
 
     def test_knowledge_acceptance_snapshot_is_available(self) -> None:
         from wechat_ai.app.service import DesktopAppService

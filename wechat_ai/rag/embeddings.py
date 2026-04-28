@@ -41,6 +41,26 @@ class EmbeddingProviderInfo:
     def uses_fake_embeddings(self) -> bool:
         return self.provider == FAKE_EMBEDDING_PROVIDER
 
+    @property
+    def trust_status(self) -> str:
+        if self.uses_fake_embeddings:
+            return "fake"
+        if self.trusted:
+            return "trusted"
+        if self.provider:
+            return "untrusted"
+        return "unknown"
+
+    @property
+    def trust_reason(self) -> str:
+        if self.uses_fake_embeddings:
+            return "fake_embedding_provider"
+        if self.trusted:
+            return ""
+        if self.provider:
+            return "embedding_trust_not_declared"
+        return "embedding_provider_missing"
+
 
 @dataclass(frozen=True)
 class FakeEmbeddings(BaseEmbeddings):

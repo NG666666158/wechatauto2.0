@@ -48,17 +48,40 @@ def list_reply_jobs(
 def list_send_jobs(
     request: Request,
     status: str | None = Query(default=None),
+    unresolved: bool | None = Query(default=None),
+    conversation_id: str | None = Query(default=None, max_length=500),
+    error_code: str | None = Query(default=None, max_length=100),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> dict[str, object]:
-    return success_response(_service(request).list_send_jobs(status=status, limit=limit), trace_id=request.state.trace_id)
+    return success_response(
+        _service(request).list_send_jobs(
+            status=status,
+            limit=limit,
+            unresolved=unresolved,
+            conversation_id=conversation_id,
+            error_code=error_code,
+        ),
+        trace_id=request.state.trace_id,
+    )
 
 
 @router.get("/send-uncertain")
 def list_uncertain_send_jobs(
     request: Request,
+    unresolved: bool | None = Query(default=True),
+    conversation_id: str | None = Query(default=None, max_length=500),
+    error_code: str | None = Query(default=None, max_length=100),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> dict[str, object]:
-    return success_response(_service(request).list_uncertain_send_jobs(limit=limit), trace_id=request.state.trace_id)
+    return success_response(
+        _service(request).list_uncertain_send_jobs(
+            limit=limit,
+            unresolved=unresolved,
+            conversation_id=conversation_id,
+            error_code=error_code,
+        ),
+        trace_id=request.state.trace_id,
+    )
 
 
 @router.get("/send/{send_job_id}/attempts")
