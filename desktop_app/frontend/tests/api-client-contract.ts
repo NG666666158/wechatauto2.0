@@ -27,6 +27,7 @@ import type {
   WebKnowledgeBuildResult,
   WechatEnvironment,
   RecentLogEvent,
+  SafetyPolicyAuditRecord,
 } from "@/lib/api"
 
 async function assertApiClientContract() {
@@ -43,6 +44,7 @@ async function assertApiClientContract() {
   const restarted: ApiResponse<RuntimeAction> = await apiClient.restartRuntime()
   const settings: ApiResponse<Settings> = await apiClient.getSettings()
   const updatedSettings: ApiResponse<Settings> = await apiClient.updateSettings({ auto_reply_enabled: false })
+  const safetyPolicyAudit: ApiResponse<SafetyPolicyAuditRecord[]> = await apiClient.getSafetyPolicyAudit(5)
   const privacy: ApiResponse<PrivacyPolicy> = await apiClient.getPrivacyPolicy()
   const updatedPrivacy: ApiResponse<PrivacyPolicy> = await apiClient.updatePrivacyPolicy({ log_retention_days: 30 })
   const conversations: ApiResponse<ConversationListItem[]> = await apiClient.listConversations()
@@ -76,6 +78,11 @@ async function assertApiClientContract() {
     conversation_id: "friend:alice",
     error_code: "SEND_NOT_CONFIRMED",
   })
+  const uncertainMetrics: ApiResponse<import("@/lib/api").SendUncertainMetrics> = await apiClient.getSendUncertainMetrics()
+  const unresolvedTotal: number | undefined = uncertainMetrics.data?.unresolved_total
+  const recent24h: number | undefined = uncertainMetrics.data?.recent_24h
+  const topErrorCode: string | undefined = uncertainMetrics.data?.top_error_codes[0]?.error_code
+  const topConversationId: string | undefined = uncertainMetrics.data?.top_conversations[0]?.conversation_id
   const uncertainSendEvidence: SendJob["confirmation_result"] = {
     reason: "send confirmation timed out",
     resolution: "manual_review",
@@ -168,6 +175,7 @@ async function assertApiClientContract() {
     restarted,
     settings,
     updatedSettings,
+    safetyPolicyAudit,
     privacy,
     updatedPrivacy,
     conversations,
@@ -182,6 +190,10 @@ async function assertApiClientContract() {
     replyReasonCodes,
     replySendStatus,
     replySendResult,
+    unresolvedTotal,
+    recent24h,
+    topErrorCode,
+    topConversationId,
     sendJobs,
     sendAttempts,
     uncertainSendJobs,

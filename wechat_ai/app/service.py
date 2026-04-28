@@ -21,7 +21,14 @@ from wechat_ai.rag.embeddings import EmbeddingProviderInfo, FakeEmbeddings
 from wechat_ai.rag.hybrid_retriever import HybridRetriever
 from wechat_ai.rag.keyword_retriever import KeywordRetriever
 from wechat_ai.rag.retriever import LocalIndexRetriever, index_has_trusted_embeddings
-from wechat_ai.runtime import SendCoordinator, UiActionLock, build_knowledge_evidence, build_knowledge_trust_metadata
+from wechat_ai.runtime import (
+    SendCoordinator,
+    UiActionLock,
+    build_knowledge_evidence,
+    build_knowledge_trust_metadata,
+    evaluate_conversation_send_preflight,
+    evaluate_send_coordinator_precheck,
+)
 from wechat_ai.safety import SafetyPolicyEngine
 from wechat_ai.storage import RuntimeStateStore
 from wechat_ai.rag.web_knowledge_builder import WebKnowledgeBuilder
@@ -32,6 +39,7 @@ from .conversation_store import ConversationStore, conversation_title
 from .knowledge_importer import KnowledgeImporter
 from .models import AppStatus, ConversationListItem, CustomerRecord, ReplySuggestion
 from .schedule_manager import ScheduleManager
+from .safety_audit import SafetyPolicyAuditTrail
 from .settings_store import DesktopSettingsStore
 from .tray_adapter import TrayAdapter
 from .wechat_bootstrap import is_process_running, locate_existing_wechat_path
@@ -287,6 +295,7 @@ class DesktopAppService:
         self.conversation_store = ConversationStore(self.conversation_store_path)
         self.runtime_state_store = RuntimeStateStore(self.app_dir / "runtime_state.sqlite3")
         self.settings_store = settings_store or DesktopSettingsStore(self.app_dir / "desktop_settings.json")
+        self.safety_policy_audit = SafetyPolicyAuditTrail(self.app_dir / "safety_policy_audit.jsonl")
         self.daemon_controller = DaemonController(self.app_dir / "daemon_state.json")
         self.daemon_runner = daemon_runner or _SubprocessDaemonRunner()
         self.schedule_manager = ScheduleManager()
@@ -328,8 +337,19 @@ class DesktopAppService:
     def get_settings(self):
         return self.settings_store.load()
 
-    def update_settings(self, patch: Mapping[str, object]):
-        return self.settings_store.update(patch)
+    def update_settings(
+        self,
+        patch: Mapping[str, object],
+        *,
+        operator: str = "system",
+        source: str = "service",
+    ):
+        updated = self.settings_store.update(patch)
+        self.safety_policy_audit.append_from_patch(patch, operator=operator, source=source)
+        return updated
+
+    def list_safety_policy_audit(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        return self.safety_policy_audit.list_recent(limit=limit)
 
     def _safety_policy_engine(self) -> SafetyPolicyEngine:
         return SafetyPolicyEngine(self.get_settings().safety_policy)
@@ -757,15 +777,18 @@ class DesktopAppService:
             send_confirmer = PyWeixinVisualSendConfirmer(probe=self._get_wechat_window_probe())
         if sender is not None:
             normalized_id = str(conversation_id).strip()
-            if self.runtime_state_store.conversation_has_unresolved_uncertain_send(normalized_id):
+            coordinator_precheck = evaluate_send_coordinator_precheck(
+                has_unresolved_uncertain_send=self.runtime_state_store.conversation_has_unresolved_uncertain_send(normalized_id),
+            )
+            if not coordinator_precheck["ok"]:
                 return {
                     "status": "blocked",
                     "action": "send_reply",
                     "allowed": False,
                     "conversation_id": conversation_id,
                     "text": cleaned_text,
-                    "reason_code": "UNRESOLVED_SEND_UNCERTAIN",
-                    "reason": "conversation has an unresolved SEND_UNCERTAIN send job",
+                    "reason_code": str(coordinator_precheck["reason_code"]),
+                    "reason": str(coordinator_precheck["reason"]),
                 }
             is_group = _conversation_chat_type(conversation_id) == "group"
             reply_job = self.runtime_state_store.create_reply_job(
@@ -838,15 +861,18 @@ class DesktopAppService:
                     "embedding_provider": knowledge_precheck.get("embedding_provider"),
                     "embedding_trusted": bool(knowledge_precheck.get("embedding_trusted", False)),
                 }
-        if self.runtime_state_store.conversation_has_unresolved_uncertain_send(normalized_id):
+        coordinator_precheck = evaluate_send_coordinator_precheck(
+            has_unresolved_uncertain_send=self.runtime_state_store.conversation_has_unresolved_uncertain_send(normalized_id),
+        )
+        if not coordinator_precheck["ok"]:
             return {
                 "status": "blocked",
                 "action": action,
                 "allowed": False,
                 "conversation_id": normalized_id,
                 "text": cleaned_text,
-                "reason_code": "UNRESOLVED_SEND_UNCERTAIN",
-                "reason": "conversation has an unresolved SEND_UNCERTAIN send job",
+                "reason_code": str(coordinator_precheck["reason_code"]),
+                "reason": str(coordinator_precheck["reason"]),
             }
         is_group = _conversation_chat_type(normalized_id) == "group"
         coordinator = SendCoordinator(
@@ -1045,6 +1071,9 @@ class DesktopAppService:
             error_code=error_code,
         )
 
+    def get_send_uncertain_metrics(self) -> dict[str, object]:
+        return self.runtime_state_store.get_send_uncertain_metrics()
+
     def resolve_uncertain_send_job(
         self,
         send_job_id: str,
@@ -1068,32 +1097,26 @@ class DesktopAppService:
 
     def validate_send_reply(self, conversation_id: str, text: str, *, skip_safety: bool = False) -> dict[str, object]:
         normalized_id = str(conversation_id).strip()
-        if not str(text).strip():
-            return _blocked_send("EMPTY_TEXT", "回复内容不能为空。")
         control = self.get_conversation_control(normalized_id)
-        if control["human_takeover"]:
-            return _blocked_send("HUMAN_TAKEOVER", "该会话已由人工接管。")
-        if control["paused"]:
-            return _blocked_send("CONVERSATION_PAUSED", "该会话已暂停自动回复。")
-        if control["blacklisted"]:
-            return _blocked_send("BLACKLISTED", "该会话在黑名单中。")
+        safety_allowed = True
+        safety_reason = ""
         if not skip_safety:
             safety = self._safety_policy_engine().assess_output(str(text))
-            if not safety.allowed_to_send:
-                return _blocked_send(
-                    "SAFETY_REVIEW_REQUIRED",
-                    ",".join(safety.reason_codes) or "SAFETY_REVIEW_REQUIRED",
-                )
-        return {
-            "allowed": True,
-            "reason_code": "",
-            "reason": "",
-            "conversation_id": normalized_id,
-        }
+            safety_allowed = bool(safety.allowed_to_send)
+            safety_reason = ",".join(safety.reason_codes) or "SAFETY_REVIEW_REQUIRED"
+        return evaluate_conversation_send_preflight(
+            conversation_id=normalized_id,
+            text=text,
+            control=control,
+            safety_allowed=safety_allowed,
+            safety_reason_code="SAFETY_REVIEW_REQUIRED",
+            safety_reason=safety_reason,
+        )
 
     def suggest_reply(self, conversation_id: str, message_text: str) -> ReplySuggestion:
         cleaned_text = str(message_text).strip()
         knowledge_trust = self._knowledge_embedding_trust_metadata()
+        requires_knowledge_review = self._requires_untrusted_knowledge_review(knowledge_trust)
         suggestion_trust = {
             "knowledge_trust_status": str(knowledge_trust["embedding_trust_status"]),
             "knowledge_trust_reason": str(knowledge_trust["embedding_trust_reason"]),
@@ -1143,6 +1166,15 @@ class DesktopAppService:
             )
         if self.reply_pipeline is None:
             suggestion = f"建议回复占位：{cleaned_text[:60]}"
+            if requires_knowledge_review:
+                self._create_untrusted_knowledge_reply_job(conversation_id, cleaned_text, suggestion, knowledge_trust)
+                return ReplySuggestion(
+                    conversation_id=conversation_id,
+                    input_text=message_text,
+                    suggestion=suggestion,
+                    status="pending_review",
+                    **suggestion_trust,
+                )
             return ReplySuggestion(
                 conversation_id=conversation_id,
                 input_text=message_text,
@@ -1165,6 +1197,15 @@ class DesktopAppService:
             conversation_id=conversation_id,
         )
         suggestion = str(self.reply_pipeline.generate_reply(message)).strip()
+        if requires_knowledge_review:
+            self._create_untrusted_knowledge_reply_job(conversation_id, cleaned_text, suggestion, knowledge_trust)
+            return ReplySuggestion(
+                conversation_id=conversation_id,
+                input_text=message_text,
+                suggestion=suggestion,
+                status="pending_review",
+                **suggestion_trust,
+            )
         return ReplySuggestion(
             conversation_id=conversation_id,
             input_text=message_text,
@@ -1301,6 +1342,48 @@ class DesktopAppService:
             trusted=info.trusted,
             trust_status=info.trust_status,
             trust_reason=info.trust_reason,
+        )
+
+    def _requires_untrusted_knowledge_review(self, trust: Mapping[str, Any]) -> bool:
+        status = self.knowledge_importer.get_status()
+        if not status.ready:
+            return False
+        return str(trust.get("embedding_trust_status") or "").strip() in {"fake", "untrusted"}
+
+    def _create_untrusted_knowledge_reply_job(
+        self,
+        conversation_id: str,
+        input_text: str,
+        draft_reply: str,
+        trust: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        normalized_id = str(conversation_id).strip()
+        trust_reason = str(trust.get("embedding_trust_reason") or "").strip()
+        reason_codes = ["UNTRUSTED_KNOWLEDGE_CONTEXT"]
+        if trust_reason:
+            reason_codes.append(trust_reason)
+        return self.runtime_state_store.create_reply_job(
+            conversation_id=normalized_id,
+            trigger_event_ids=[
+                RuntimeStateStore.message_signature(
+                    conversation_id=normalized_id,
+                    sender_name="customer",
+                    content=input_text,
+                    source="desktop_suggest_untrusted_knowledge",
+                )
+            ],
+            input_text=input_text,
+            draft_reply=draft_reply,
+            status="PENDING_REVIEW",
+            risk_level="MEDIUM",
+            need_human_review=True,
+            reason_codes=reason_codes,
+            idempotency_key=RuntimeStateStore.message_signature(
+                conversation_id=normalized_id,
+                sender_name="customer",
+                content=input_text,
+                source="desktop_suggest_untrusted_knowledge_reply_job",
+            ),
         )
 
     def get_knowledge_status(self) -> dict[str, Any]:
@@ -1619,12 +1702,6 @@ def _normalize_message_item(conversation_id: str, item: Mapping[str, object]) ->
     return normalized
 
 
-def _blocked_send(reason_code: str, reason: str) -> dict[str, object]:
-    return {
-        "allowed": False,
-        "reason_code": reason_code,
-        "reason": reason,
-    }
 
 
 def _build_hybrid_retriever(index_path: Path) -> HybridRetriever:

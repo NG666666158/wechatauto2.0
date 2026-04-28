@@ -118,6 +118,21 @@ export type DashboardSummary = {
     identity_drafts: number
     identity_candidates: number
   }
+  send_uncertain?: SendUncertainMetrics
+}
+
+export type SendUncertainMetrics = {
+  unresolved_total: number
+  recent_24h: number
+  top_error_codes: Array<{
+    error_code: string
+    count: number
+  }>
+  top_conversations: Array<{
+    conversation_id: string
+    target_title: string
+    count: number
+  }>
 }
 
 export type LogsSummary = {
@@ -185,6 +200,15 @@ export type SafetyPolicyConfig = {
 export type SafetyPolicyPatch = Partial<SafetyPolicyConfig> & {
   rule_groups?: Record<string, boolean>
   reset_to_defaults?: boolean
+}
+
+export type SafetyPolicyAuditRecord = {
+  timestamp: string
+  action: string
+  changed_rule_groups: Record<string, boolean>
+  reset_to_defaults: boolean
+  operator: string
+  source: string
 }
 
 export type Settings = {
@@ -469,6 +493,7 @@ export const apiClient = {
     post<RuntimeAction>("/runtime/bootstrap-start", STRICT_BOOTSTRAP_PAYLOAD),
   getSettings: () => request<Settings>("/settings"),
   updateSettings: (patchBody: SettingsPatch) => patch<Settings>("/settings", patchBody),
+  getSafetyPolicyAudit: (limit = 20) => request<SafetyPolicyAuditRecord[]>(withQuery("/settings/safety-policy/audit", { limit })),
   getPrivacyPolicy: () => request<PrivacyPolicy>("/privacy/policy"),
   updatePrivacyPolicy: (patchBody: PrivacyPolicyPatch) => patch<PrivacyPolicy>("/privacy/policy", patchBody),
   listConversations: () => request<ConversationListItem[]>("/conversations"),
@@ -495,6 +520,7 @@ export const apiClient = {
     post<SendJob>(`/jobs/send/${encodeURIComponent(sendJobId)}/resolve`, body),
   listUncertainSendJobs: (limit = 100, filters: SendJobListFilters = {}) =>
     request<SendJob[]>(withQuery("/jobs/send-uncertain", { limit, ...filters })),
+  getSendUncertainMetrics: () => request<SendUncertainMetrics>("/jobs/send-uncertain/metrics"),
   listCustomers: () => request<Customer[]>("/customers"),
   getCustomer: (customerId: string) => request<Customer>(`/customers/${encodeURIComponent(customerId)}`),
   listIdentityDrafts: () => request<IdentityDraft[]>("/identity/drafts"),

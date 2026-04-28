@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query, Request
 from pydantic import Field
 
 from wechat_ai.server.core import ApiError, ErrorCode, success_response
+from wechat_ai.server.schemas import ApiResponse, SendUncertainMetricsData
 from wechat_ai.server.schemas.frontend import StrictRequestModel
 
 
@@ -80,6 +81,14 @@ def list_uncertain_send_jobs(
             conversation_id=conversation_id,
             error_code=error_code,
         ),
+        trace_id=request.state.trace_id,
+    )
+
+
+@router.get("/send-uncertain/metrics", response_model=ApiResponse[SendUncertainMetricsData])
+def send_uncertain_metrics(request: Request) -> dict[str, object]:
+    return success_response(
+        _service(request).get_send_uncertain_metrics(),
         trace_id=request.state.trace_id,
     )
 

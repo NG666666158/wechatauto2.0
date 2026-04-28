@@ -59,6 +59,12 @@
       "mode": "global",
       "running": true,
       "state": "running"
+    },
+    "send_uncertain": {
+      "recent_24h": 0,
+      "top_conversations": [],
+      "top_error_codes": [],
+      "unresolved_total": 0
     }
   },
   "error": null,

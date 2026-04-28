@@ -378,6 +378,38 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_safety_policy_updates_are_audited_to_jsonl(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_safety_policy_audit")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+
+            service.update_settings(
+                {"safety_policy": {"rule_groups": {"business_risk": False}}},
+                operator="alice",
+                source="settings-page",
+            )
+            service.update_settings(
+                {"safety_policy": {"reset_to_defaults": True}},
+                operator="bob",
+                source="settings-page",
+            )
+
+            records = service.list_safety_policy_audit(limit=5)
+
+            self.assertEqual(len(records), 2)
+            self.assertEqual(records[0]["action"], "reset_to_defaults")
+            self.assertEqual(records[0]["operator"], "bob")
+            self.assertEqual(records[0]["source"], "settings-page")
+            self.assertTrue(records[0]["reset_to_defaults"])
+            self.assertEqual(records[1]["action"], "rule_groups_updated")
+            self.assertEqual(records[1]["operator"], "alice")
+            self.assertEqual(records[1]["changed_rule_groups"], {"business_risk": False})
+            self.assertTrue((temp_dir / "app" / "safety_policy_audit.jsonl").exists())
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_updated_safety_policy_affects_suggest_without_restart(self) -> None:
         from dataclasses import asdict, replace
 
@@ -457,6 +489,33 @@ class DesktopAppServiceTests(TestCase):
             self.assertEqual(suggestion.suggestion, "建议:请问支持试用吗？")
             self.assertEqual(getattr(pipeline.messages[0], "conversation_id"), "friend:alice")
             self.assertEqual(getattr(pipeline.messages[0], "chat_type"), "friend")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_untrusted_knowledge_suggestion_routes_to_manual_review(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_untrusted_knowledge_suggest")
+        try:
+            source = temp_dir / "trial.txt"
+            source.write_text("试用政策：支持 7 天试用，提交信息后开通。", encoding="utf-8")
+            pipeline = FakeReplyPipeline()
+            service = DesktopAppService(data_root=temp_dir, reply_pipeline=pipeline)
+            service.import_knowledge_files([source])
+            service.record_conversation_message("friend:alice", sender="Alice", text="请问支持试用吗？", direction="incoming")
+
+            suggestion = service.suggest_reply("friend:alice", "请问支持试用吗？")
+            jobs = service.runtime_state_store.list_reply_jobs(status="PENDING_REVIEW")
+
+            self.assertEqual(suggestion.status, "pending_review")
+            self.assertEqual(suggestion.knowledge_trust_status, "fake")
+            self.assertEqual(suggestion.knowledge_trust_reason, "fake_embedding_provider")
+            self.assertEqual(suggestion.suggestion, "建议:请问支持试用吗？")
+            self.assertEqual(len(jobs), 1)
+            self.assertEqual(jobs[0]["draft_reply"], "建议:请问支持试用吗？")
+            self.assertEqual(jobs[0]["risk_level"], "MEDIUM")
+            self.assertTrue(jobs[0]["need_human_review"])
+            self.assertEqual(jobs[0]["reason_codes"], ["UNTRUSTED_KNOWLEDGE_CONTEXT", "fake_embedding_provider"])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -643,6 +702,34 @@ class DesktopAppServiceTests(TestCase):
             )
 
             self.assertEqual([job["send_job_id"] for job in jobs], [matching["send_job_id"]])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_get_send_uncertain_metrics_delegates_to_runtime_state(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_uncertain_metrics")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+            send = service.runtime_state_store.create_send_job(
+                reply_job_id="reply-1",
+                conversation_id="friend:alice",
+                target_title="Alice",
+                content="hi",
+                status="SEND_UNCERTAIN",
+            )
+            attempt = service.runtime_state_store.create_send_attempt(send["send_job_id"])
+            service.runtime_state_store.finish_send_attempt(
+                attempt["attempt_id"],
+                status="SEND_UNCERTAIN",
+                error_code="SEND_NOT_CONFIRMED",
+            )
+
+            metrics = service.get_send_uncertain_metrics()
+
+            self.assertEqual(metrics["unresolved_total"], 1)
+            self.assertEqual(metrics["top_error_codes"], [{"error_code": "SEND_NOT_CONFIRMED", "count": 1}])
+            self.assertEqual(metrics["top_conversations"][0]["conversation_id"], "friend:alice")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

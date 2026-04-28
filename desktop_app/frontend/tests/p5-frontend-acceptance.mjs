@@ -53,6 +53,8 @@ const checks = [
         "listSendAttempts",
         "resolveSendJob",
         "listUncertainSendJobs",
+        "getSendUncertainMetrics",
+        "SendUncertainMetrics",
         "listCustomers",
         "updateGlobalSelfIdentity",
         "getKnowledgeStatus",
@@ -65,6 +67,20 @@ const checks = [
         "event_type",
         "trace_id",
       ].every((token) => source.includes(token))
+    },
+  },
+  {
+    name: "home page renders send uncertain risk overview",
+    run: () => {
+      const source = read("app/page.tsx")
+      return (
+        source.includes("getSendUncertainMetrics") &&
+        source.includes("SendUncertainRiskOverview") &&
+        source.includes("top_error_codes") &&
+        source.includes("top_conversations") &&
+        source.includes("SEND_UNCERTAIN") &&
+        !source.includes("自动重发")
+      )
     },
   },
   {
@@ -298,6 +314,23 @@ const checks = [
         source.includes("reset_to_defaults") &&
         apiSource.includes("SafetyPolicyPatch") &&
         apiSource.includes("rule_groups")
+      )
+    },
+  },
+  {
+    name: "settings page renders safety policy audit trail",
+    run: () => {
+      const source = read("app/settings/page.tsx")
+      const apiSource = read("lib/api.ts")
+      return (
+        source.includes("getSafetyPolicyAudit") &&
+        source.includes("SafetyPolicyAuditTrail") &&
+        source.includes("changed_rule_groups") &&
+        source.includes("reset_to_defaults") &&
+        source.includes("operator") &&
+        source.includes("source") &&
+        apiSource.includes("SafetyPolicyAuditRecord") &&
+        apiSource.includes('"/settings/safety-policy/audit"')
       )
     },
   },

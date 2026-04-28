@@ -7,7 +7,7 @@ import { AppShell } from "@/components/app-shell"
 import { ErrorState, LoadingState } from "@/components/api-state"
 import { useServerEvents } from "@/hooks/use-server-events"
 import { apiClient } from "@/lib/api"
-import type { DashboardSummary, LogsSummary, RecentLogEvent, RuntimeAction, RuntimeStatus, SendJob, WechatEnvironment } from "@/lib/api"
+import type { DashboardSummary, LogsSummary, RecentLogEvent, RuntimeAction, RuntimeStatus, SendJob, SendUncertainMetrics, WechatEnvironment } from "@/lib/api"
 import {
   Bell,
   Bot,
@@ -27,6 +27,7 @@ type HomeState = {
   dashboard: DashboardSummary | null
   runtime: RuntimeStatus | null
   logsSummary: LogsSummary | null
+  sendUncertainMetrics: SendUncertainMetrics | null
   environment: WechatEnvironment | null
   recentLogs: RecentLogEvent[]
   uncertainSendJobs: SendJob[]
@@ -36,6 +37,7 @@ const emptyState: HomeState = {
   dashboard: null,
   runtime: null,
   logsSummary: null,
+  sendUncertainMetrics: null,
   environment: null,
   recentLogs: [],
   uncertainSendJobs: [],
@@ -53,15 +55,16 @@ export default function HomePage() {
 
   const loadHomeData = useCallback(async () => {
     setError("")
-    const [dashboard, runtime, logsSummary, recentLogs, uncertainSendJobs] = await Promise.all([
+    const [dashboard, runtime, logsSummary, recentLogs, uncertainSendJobs, sendUncertainMetrics] = await Promise.all([
       apiClient.getDashboardSummary(),
       apiClient.getRuntimeStatus(),
       apiClient.getLogsSummary(20),
       apiClient.getRecentLogs(3),
       apiClient.listUncertainSendJobs(20),
+      apiClient.getSendUncertainMetrics(),
     ])
 
-    const failed = [dashboard, runtime, logsSummary, recentLogs, uncertainSendJobs].find((item) => !item.success)
+    const failed = [dashboard, runtime, logsSummary, recentLogs, uncertainSendJobs, sendUncertainMetrics].find((item) => !item.success)
     if (failed?.error) {
       setError(`${failed.error.code}: ${failed.error.message}`)
     }
@@ -70,6 +73,7 @@ export default function HomePage() {
       dashboard: dashboard.data,
       runtime: runtime.data,
       logsSummary: logsSummary.data,
+      sendUncertainMetrics: sendUncertainMetrics.data ?? dashboard.data?.send_uncertain ?? null,
       environment: previous.environment,
       recentLogs: recentLogs.data ?? [],
       uncertainSendJobs: uncertainSendJobs.data ?? [],
@@ -181,6 +185,7 @@ export default function HomePage() {
   const dashboard = state.dashboard
   const runtime = state.runtime ?? dashboard?.runtime
   const app = dashboard?.app
+  const sendUncertainMetrics = state.sendUncertainMetrics ?? dashboard?.send_uncertain ?? null
   const environment = state.environment
   const synced = Boolean(runtime?.running)
 
@@ -291,6 +296,8 @@ export default function HomePage() {
               </div>
             </section>
 
+            <SendUncertainRiskOverview metrics={sendUncertainMetrics} />
+
             <section className="rounded-xl border border-[var(--app-card-border)] bg-[var(--app-card-bg)] p-5 shadow-[var(--app-card-shadow)]">
               <h2 className="mb-3 text-[17px] font-bold text-[var(--app-title)]">最近动态</h2>
               <ul className="divide-y divide-[var(--app-row-border)]">
@@ -310,6 +317,76 @@ export default function HomePage() {
       </div>
     </AppShell>
   )
+}
+
+function SendUncertainRiskOverview({ metrics }: { metrics: SendUncertainMetrics | null }) {
+  const top_error_codes = metrics?.top_error_codes ?? []
+  const top_conversations = metrics?.top_conversations ?? []
+  return (
+    <section className="rounded-xl border border-rose-200 bg-white p-5 shadow-[var(--app-card-shadow)]">
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-[17px] font-bold text-[var(--app-title)]">SEND_UNCERTAIN risk overview</h2>
+          <p className="mt-1 text-xs font-medium text-[var(--app-muted-text)]">Manual review only. This panel never retries sends.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => window.location.assign("/pending")}
+          className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50"
+        >
+          Open Pending
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <RiskMetric label="Unresolved" value={String(metrics?.unresolved_total ?? 0)} />
+        <RiskMetric label="Recent 24h" value={String(metrics?.recent_24h ?? 0)} />
+        <RiskMetric label="Top error" value={top_error_codes[0]?.error_code ?? "none"} sub={formatMetricCount(top_error_codes[0]?.count)} />
+        <RiskMetric
+          label="Top conversation"
+          value={top_conversations[0]?.target_title || top_conversations[0]?.conversation_id || "none"}
+          sub={formatMetricCount(top_conversations[0]?.count)}
+        />
+      </div>
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <RiskList title="Top error_code" items={top_error_codes.map((item) => `${item.error_code}: ${item.count}`)} />
+        <RiskList
+          title="Top conversation"
+          items={top_conversations.map((item) => `${item.target_title || item.conversation_id}: ${item.count}`)}
+        />
+      </div>
+    </section>
+  )
+}
+
+function RiskMetric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-lg border border-[var(--app-row-border)] bg-white/60 p-3">
+      <div className="text-xs font-bold uppercase text-[var(--app-muted-text)]">{label}</div>
+      <div className="mt-2 truncate text-lg font-bold text-[var(--app-strong-text)]">{value}</div>
+      {sub ? <div className="mt-1 text-xs font-medium text-[var(--app-muted-text)]">{sub}</div> : null}
+    </div>
+  )
+}
+
+function RiskList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="rounded-lg border border-[var(--app-row-border)] p-3">
+      <div className="mb-2 text-xs font-bold uppercase text-[var(--app-muted-text)]">{title}</div>
+      {items.length ? (
+        <ul className="space-y-1 text-xs font-semibold text-[var(--app-text)]">
+          {items.slice(0, 5).map((item) => (
+            <li key={item} className="truncate">{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <div className="text-xs font-medium text-[var(--app-muted-text)]">none</div>
+      )}
+    </div>
+  )
+}
+
+function formatMetricCount(value: number | undefined) {
+  return typeof value === "number" ? `${value} jobs` : undefined
 }
 
 function StatusCard({

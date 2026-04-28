@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 from uuid import uuid4
@@ -429,6 +430,68 @@ class RuntimeStateStore:
             error_code=error_code,
         )
 
+    def get_send_uncertain_metrics(self, *, now: str | None = None, top_limit: int = 5) -> dict[str, Any]:
+        current = _parse_timestamp(now) if now else datetime.now(UTC)
+        cutoff = (current - timedelta(hours=24)).isoformat().replace("+00:00", "Z")
+        safe_limit = max(1, int(top_limit))
+        with self._connect() as conn:
+            unresolved = conn.execute(
+                "SELECT COUNT(*) AS count FROM send_jobs WHERE status = 'SEND_UNCERTAIN'"
+            ).fetchone()
+            recent = conn.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM send_jobs
+                WHERE status = 'SEND_UNCERTAIN' AND created_at >= ?
+                """,
+                (cutoff,),
+            ).fetchone()
+            top_error_codes = [
+                {
+                    "error_code": str(row["error_code"] or "UNKNOWN"),
+                    "count": int(row["count"] or 0),
+                }
+                for row in conn.execute(
+                    """
+                    SELECT COALESCE(send_attempts.error_code, 'UNKNOWN') AS error_code,
+                           COUNT(DISTINCT send_jobs.send_job_id) AS count
+                    FROM send_jobs
+                    LEFT JOIN send_attempts ON send_attempts.send_job_id = send_jobs.send_job_id
+                    WHERE send_jobs.status = 'SEND_UNCERTAIN'
+                    GROUP BY COALESCE(send_attempts.error_code, 'UNKNOWN')
+                    ORDER BY count DESC, error_code ASC
+                    LIMIT ?
+                    """,
+                    (safe_limit,),
+                ).fetchall()
+            ]
+            top_conversations = [
+                {
+                    "conversation_id": str(row["conversation_id"] or ""),
+                    "target_title": str(row["target_title"] or ""),
+                    "count": int(row["count"] or 0),
+                }
+                for row in conn.execute(
+                    """
+                    SELECT conversation_id,
+                           MAX(target_title) AS target_title,
+                           COUNT(*) AS count
+                    FROM send_jobs
+                    WHERE status = 'SEND_UNCERTAIN'
+                    GROUP BY conversation_id
+                    ORDER BY count DESC, conversation_id ASC
+                    LIMIT ?
+                    """,
+                    (safe_limit,),
+                ).fetchall()
+            ]
+        return {
+            "unresolved_total": int(unresolved["count"] or 0) if unresolved else 0,
+            "recent_24h": int(recent["count"] or 0) if recent else 0,
+            "top_error_codes": top_error_codes,
+            "top_conversations": top_conversations,
+        }
+
     def list_unresolved_uncertain_by_conversation(
         self,
         conversation_id: str,
@@ -641,3 +704,13 @@ def _json_dumps(value: object) -> str:
 def _optional_text(value: object) -> str | None:
     text = str(value or "").strip()
     return text or None
+
+
+def _parse_timestamp(value: str | None) -> datetime:
+    text = str(value or "").strip()
+    if not text:
+        return datetime.now(UTC)
+    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)

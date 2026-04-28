@@ -349,6 +349,64 @@ class RuntimeStateStoreTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_send_uncertain_metrics_reports_unresolved_recent_and_top_dimensions(self) -> None:
+        from wechat_ai.storage.runtime_state import RuntimeStateStore
+
+        temp_dir = _fresh_dir(".tmp_runtime_state_uncertain_metrics")
+        try:
+            store = RuntimeStateStore(temp_dir / "runtime_state.sqlite3")
+            first = store.create_send_job(
+                reply_job_id="reply-1",
+                conversation_id="friend:Alice",
+                target_title="Alice",
+                content="hi",
+                status="SEND_UNCERTAIN",
+            )
+            second = store.create_send_job(
+                reply_job_id="reply-2",
+                conversation_id="friend:Alice",
+                target_title="Alice",
+                content="again",
+                status="SEND_UNCERTAIN",
+            )
+            old = store.create_send_job(
+                reply_job_id="reply-3",
+                conversation_id="friend:Bob",
+                target_title="Bob",
+                content="old",
+                status="SEND_UNCERTAIN",
+            )
+            resolved = store.create_send_job(
+                reply_job_id="reply-4",
+                conversation_id="friend:Carol",
+                target_title="Carol",
+                content="done",
+                status="SEND_UNCERTAIN",
+            )
+            first_attempt = store.create_send_attempt(first["send_job_id"])
+            store.finish_send_attempt(first_attempt["attempt_id"], status="SEND_UNCERTAIN", error_code="SEND_NOT_CONFIRMED")
+            second_attempt = store.create_send_attempt(second["send_job_id"])
+            store.finish_send_attempt(second_attempt["attempt_id"], status="SEND_UNCERTAIN", error_code="SEND_NOT_CONFIRMED")
+            old_attempt = store.create_send_attempt(old["send_job_id"])
+            store.finish_send_attempt(old_attempt["attempt_id"], status="SEND_UNCERTAIN", error_code="TARGET_MISMATCH")
+            store.resolve_uncertain_send_job(resolved["send_job_id"], resolution="confirmed")
+
+            with store._connect() as conn:
+                conn.execute(
+                    "UPDATE send_jobs SET created_at = ? WHERE send_job_id = ?",
+                    ("2026-04-20T00:00:00Z", old["send_job_id"]),
+                )
+
+            metrics = store.get_send_uncertain_metrics(now="2026-04-28T12:00:00Z")
+
+            self.assertEqual(metrics["unresolved_total"], 3)
+            self.assertEqual(metrics["recent_24h"], 2)
+            self.assertEqual(metrics["top_error_codes"][0], {"error_code": "SEND_NOT_CONFIRMED", "count": 2})
+            self.assertEqual(metrics["top_conversations"][0]["conversation_id"], "friend:Alice")
+            self.assertEqual(metrics["top_conversations"][0]["count"], 2)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_resolve_uncertain_send_job_rejects_non_uncertain_status(self) -> None:
         from wechat_ai.storage.runtime_state import RuntimeStateStore
 

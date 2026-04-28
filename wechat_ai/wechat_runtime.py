@@ -36,7 +36,7 @@ from .rag.hybrid_retriever import HybridRetriever
 from .rag.keyword_retriever import KeywordRetriever
 from .rag.retriever import LocalIndexRetriever, index_has_trusted_embeddings
 from .reply_scheduler import PendingReplyBatch, ReplyScheduler
-from .runtime import SendCoordinator, UiActionLock
+from .runtime import SendCoordinator, UiActionLock, evaluate_send_coordinator_precheck
 from .safety import SafetyPolicyEngine
 from .storage import RuntimeStateStore
 
@@ -1063,15 +1063,13 @@ class WeChatAIApp:
         return result
 
     def _send_reply_precheck(self, conversation_id: str) -> dict[str, object]:
-        if self.runtime_state_store.conversation_has_unresolved_uncertain_send(conversation_id):
-            return {
-                "ok": False,
-                "reason_code": "UNRESOLVED_SEND_UNCERTAIN",
-                "reason": "conversation has an unresolved SEND_UNCERTAIN send job",
-            }
+        knowledge_precheck = None
         if self.enforce_trusted_knowledge_for_sending:
-            return _precheck_trusted_knowledge_embeddings()
-        return {"ok": True}
+            knowledge_precheck = _precheck_trusted_knowledge_embeddings()
+        return evaluate_send_coordinator_precheck(
+            has_unresolved_uncertain_send=self.runtime_state_store.conversation_has_unresolved_uncertain_send(conversation_id),
+            knowledge_precheck=knowledge_precheck,
+        )
 
     def _flush_active_pending(
         self,

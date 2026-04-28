@@ -669,6 +669,44 @@
         "title": "ApiResponse[SendReplyResultData]",
         "type": "object"
       },
+      "ApiResponse_SendUncertainMetricsData_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SendUncertainMetricsData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiErrorPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "default": "",
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ApiResponse[SendUncertainMetricsData]",
+        "type": "object"
+      },
       "ApiResponse_SettingsData_": {
         "properties": {
           "data": {
@@ -1031,6 +1069,48 @@
           "success"
         ],
         "title": "ApiResponse[list[KnowledgeSearchResultData]]",
+        "type": "object"
+      },
+      "ApiResponse_list_SafetyPolicyAuditRecordData__": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SafetyPolicyAuditRecordData"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiErrorPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "default": "",
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ApiResponse[list[SafetyPolicyAuditRecordData]]",
         "type": "object"
       },
       "ApiResponse_list_dict_str__object___": {
@@ -1548,6 +1628,9 @@
           },
           "runtime": {
             "$ref": "#/components/schemas/RuntimeStatusData"
+          },
+          "send_uncertain": {
+            "$ref": "#/components/schemas/SendUncertainMetricsData"
           }
         },
         "title": "DashboardSummaryData",
@@ -2571,6 +2654,44 @@
         "title": "SafetyPatternRulePatchRequest",
         "type": "object"
       },
+      "SafetyPolicyAuditRecordData": {
+        "properties": {
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "changed_rule_groups": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Changed Rule Groups",
+            "type": "object"
+          },
+          "operator": {
+            "default": "",
+            "title": "Operator",
+            "type": "string"
+          },
+          "reset_to_defaults": {
+            "default": false,
+            "title": "Reset To Defaults",
+            "type": "boolean"
+          },
+          "source": {
+            "default": "",
+            "title": "Source",
+            "type": "string"
+          },
+          "timestamp": {
+            "default": "",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "title": "SafetyPolicyAuditRecordData",
+        "type": "object"
+      },
       "SafetyPolicyConfigData": {
         "properties": {
           "input_rules": {
@@ -2900,6 +3021,73 @@
           "resolution"
         ],
         "title": "SendResolveRequest",
+        "type": "object"
+      },
+      "SendUncertainConversationMetricData": {
+        "properties": {
+          "conversation_id": {
+            "default": "",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "target_title": {
+            "default": "",
+            "title": "Target Title",
+            "type": "string"
+          }
+        },
+        "title": "SendUncertainConversationMetricData",
+        "type": "object"
+      },
+      "SendUncertainErrorCodeMetricData": {
+        "properties": {
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "error_code": {
+            "default": "",
+            "title": "Error Code",
+            "type": "string"
+          }
+        },
+        "title": "SendUncertainErrorCodeMetricData",
+        "type": "object"
+      },
+      "SendUncertainMetricsData": {
+        "properties": {
+          "recent_24h": {
+            "default": 0,
+            "title": "Recent 24H",
+            "type": "integer"
+          },
+          "top_conversations": {
+            "items": {
+              "$ref": "#/components/schemas/SendUncertainConversationMetricData"
+            },
+            "title": "Top Conversations",
+            "type": "array"
+          },
+          "top_error_codes": {
+            "items": {
+              "$ref": "#/components/schemas/SendUncertainErrorCodeMetricData"
+            },
+            "title": "Top Error Codes",
+            "type": "array"
+          },
+          "unresolved_total": {
+            "default": 0,
+            "title": "Unresolved Total",
+            "type": "integer"
+          }
+        },
+        "title": "SendUncertainMetricsData",
         "type": "object"
       },
       "SettingsData": {
@@ -4629,6 +4817,27 @@
         ]
       }
     },
+    "/api/v1/jobs/send-uncertain/metrics": {
+      "get": {
+        "operationId": "send_uncertain_metrics_api_v1_jobs_send_uncertain_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SendUncertainMetricsData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Send Uncertain Metrics",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/v1/jobs/send/{send_job_id}/attempts": {
       "get": {
         "operationId": "list_send_attempts_api_v1_jobs_send__send_job_id__attempts_get",
@@ -5435,6 +5644,51 @@
           }
         },
         "summary": "Update Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/safety-policy/audit": {
+      "get": {
+        "operationId": "list_safety_policy_audit_api_v1_settings_safety_policy_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_SafetyPolicyAuditRecordData__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Safety Policy Audit",
         "tags": [
           "settings"
         ]

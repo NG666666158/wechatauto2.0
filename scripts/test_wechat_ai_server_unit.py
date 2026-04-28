@@ -140,6 +140,7 @@ class FakeDesktopService:
         }
         self.last_approve_request: dict[str, object] = {}
         self.last_cancel_request: dict[str, object] = {}
+        self.safety_policy_audit: list[dict[str, object]] = []
 
     def get_app_status(self) -> FakeAppStatus:
         return FakeAppStatus(daemon_state=str(self.daemon_state["state"]))
@@ -225,6 +226,14 @@ class FakeDesktopService:
         }
         del limit
         return list(self.uncertain_send_jobs)
+
+    def get_send_uncertain_metrics(self) -> dict[str, object]:
+        return {
+            "unresolved_total": 1,
+            "recent_24h": 1,
+            "top_error_codes": [{"error_code": "SEND_NOT_CONFIRMED", "count": 1}],
+            "top_conversations": [{"conversation_id": "friend:alice", "target_title": "alice", "count": 1}],
+        }
 
     def list_send_attempts(self, send_job_id: str, *, limit: int = 100) -> list[dict[str, object]]:
         del limit
@@ -325,9 +334,36 @@ class FakeDesktopService:
     def get_settings(self) -> dict[str, object]:
         return dict(self.settings)
 
-    def update_settings(self, patch: dict[str, object]) -> dict[str, object]:
+    def update_settings(
+        self,
+        patch: dict[str, object],
+        *,
+        operator: str = "operator",
+        source: str = "api",
+    ) -> dict[str, object]:
         self.settings.update(patch)
+        if "safety_policy" in patch:
+            safety_policy = patch["safety_policy"]
+            changed_rule_groups = {}
+            reset_to_defaults = False
+            if isinstance(safety_policy, dict):
+                changed_rule_groups = dict(safety_policy.get("rule_groups", {}))
+                reset_to_defaults = bool(safety_policy.get("reset_to_defaults", False))
+            self.safety_policy_audit.insert(
+                0,
+                {
+                    "timestamp": "2026-04-28T00:00:00Z",
+                    "action": "reset_to_defaults" if reset_to_defaults else "rule_groups_updated",
+                    "changed_rule_groups": changed_rule_groups,
+                    "reset_to_defaults": reset_to_defaults,
+                    "operator": operator,
+                    "source": source,
+                },
+            )
         return dict(self.settings)
+
+    def list_safety_policy_audit(self, *, limit: int = 20) -> list[dict[str, object]]:
+        return self.safety_policy_audit[:limit]
 
     def get_tray_state(self) -> dict[str, object]:
         return {
@@ -1239,6 +1275,27 @@ def test_settings_endpoint_accepts_safety_rule_group_and_reset_patch() -> None:
     assert service.settings["safety_policy"]["reset_to_defaults"] is True
 
 
+def test_settings_endpoint_exposes_safety_policy_audit_records() -> None:
+    from wechat_ai.server import create_app
+
+    service = FakeDesktopService()
+    client = TestClient(create_app(desktop_service=service))
+
+    updated = client.patch(
+        "/api/v1/settings",
+        json={"safety_policy": {"rule_groups": {"business_risk": False}}},
+    )
+    audit = client.get("/api/v1/settings/safety-policy/audit?limit=5")
+
+    assert updated.status_code == 200
+    assert audit.status_code == 200
+    assert audit.json()["success"] is True
+    assert audit.json()["data"][0]["action"] == "rule_groups_updated"
+    assert audit.json()["data"][0]["changed_rule_groups"] == {"business_risk": False}
+    assert audit.json()["data"][0]["operator"] == "api"
+    assert audit.json()["data"][0]["source"] == "settings.patch"
+
+
 def test_frontend_customer_identity_and_knowledge_endpoints_are_available() -> None:
     from wechat_ai.server import create_app
 
@@ -1349,6 +1406,7 @@ def test_runtime_jobs_endpoints_expose_send_uncertain_queue() -> None:
     uncertain = client.get(
         "/api/v1/jobs/send-uncertain?unresolved=true&conversation_id=friend%3Aalice&error_code=SEND_NOT_CONFIRMED"
     ).json()
+    metrics = client.get("/api/v1/jobs/send-uncertain/metrics").json()
     attempts = client.get("/api/v1/jobs/send/send_001/attempts").json()
     reply_jobs = client.get("/api/v1/jobs/reply").json()
 
@@ -1356,6 +1414,10 @@ def test_runtime_jobs_endpoints_expose_send_uncertain_queue() -> None:
     assert send_jobs["data"][0]["send_job_id"] == "send_001"
     assert send_jobs["data"][0]["status"] == "SEND_UNCERTAIN"
     assert uncertain["data"][0]["conversation_id"] == "friend:alice"
+    assert metrics["data"]["unresolved_total"] == 1
+    assert metrics["data"]["recent_24h"] == 1
+    assert metrics["data"]["top_error_codes"][0]["error_code"] == "SEND_NOT_CONFIRMED"
+    assert metrics["data"]["top_conversations"][0]["conversation_id"] == "friend:alice"
     assert attempts["data"][0]["attempt_id"] == "attempt_001"
     assert attempts["data"][0]["before_screenshot"] == "screens/before.png"
     assert reply_jobs["data"][0]["reply_job_id"] == "reply_001"
@@ -1500,6 +1562,7 @@ def main() -> None:
     test_frontend_dashboard_and_settings_endpoints_are_available()
     test_settings_endpoint_round_trips_safety_policy()
     test_settings_endpoint_accepts_safety_rule_group_and_reset_patch()
+    test_settings_endpoint_exposes_safety_policy_audit_records()
     test_frontend_customer_identity_and_knowledge_endpoints_are_available()
     test_message_page_conversation_and_suggestion_endpoints_are_available()
     test_frontend_ops_privacy_and_environment_endpoints_are_available()

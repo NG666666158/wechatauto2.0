@@ -3,7 +3,7 @@
   "api_version": "0.1.0",
   "base_path": "/api/v1",
   "contract_version": "p4-baseline-v1",
-  "endpoint_count": 49,
+  "endpoint_count": 51,
   "endpoints": [
     {
       "id": "get_api_v1_controls_conversations_conversation_id",
@@ -357,6 +357,20 @@
       ]
     },
     {
+      "id": "get_api_v1_jobs_send_uncertain_metrics",
+      "method": "GET",
+      "path": "/api/v1/jobs/send-uncertain/metrics",
+      "request_schema": "",
+      "response_codes": [
+        "200"
+      ],
+      "response_schema": "ApiResponse_SendUncertainMetricsData_",
+      "summary": "Send Uncertain Metrics",
+      "tags": [
+        "jobs"
+      ]
+    },
+    {
       "id": "get_api_v1_jobs_send_send_job_id_attempts",
       "method": "GET",
       "path": "/api/v1/jobs/send/{send_job_id}/attempts",
@@ -678,6 +692,21 @@
       ]
     },
     {
+      "id": "get_api_v1_settings_safety_policy_audit",
+      "method": "GET",
+      "path": "/api/v1/settings/safety-policy/audit",
+      "request_schema": "",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "ApiResponse_list_SafetyPolicyAuditRecordData__",
+      "summary": "List Safety Policy Audit",
+      "tags": [
+        "settings"
+      ]
+    },
+    {
       "id": "get_api_v1_shell_schedule_status",
       "method": "GET",
       "path": "/api/v1/shell/schedule-status",
@@ -753,7 +782,7 @@
       "/api/v1/errors/catalog"
     ]
   },
-  "schema_count": 85,
+  "schema_count": 91,
   "schemas": [
     "ApiErrorPayload",
     "ApiResponse_ConversationControlData_",
@@ -773,6 +802,7 @@
     "ApiResponse_RuntimeStatusData_",
     "ApiResponse_SelfIdentityData_",
     "ApiResponse_SendReplyResultData_",
+    "ApiResponse_SendUncertainMetricsData_",
     "ApiResponse_SettingsData_",
     "ApiResponse_WebKnowledgeBuildResultData_",
     "ApiResponse_WechatEnvironmentData_",
@@ -782,6 +812,7 @@
     "ApiResponse_list_IdentityCandidateData__",
     "ApiResponse_list_IdentityDraftData__",
     "ApiResponse_list_KnowledgeSearchResultData__",
+    "ApiResponse_list_SafetyPolicyAuditRecordData__",
     "ApiResponse_list_dict_str__object___",
     "AppStatusData",
     "BusinessReasonCodeData",
@@ -823,6 +854,7 @@
     "RuntimeStatusData",
     "SafetyPatternRuleData",
     "SafetyPatternRulePatchRequest",
+    "SafetyPolicyAuditRecordData",
     "SafetyPolicyConfigData",
     "SafetyPolicyPatchRequest",
     "ScheduleBlockData",
@@ -832,6 +864,9 @@
     "SendReplyRequest",
     "SendReplyResultData",
     "SendResolveRequest",
+    "SendUncertainConversationMetricData",
+    "SendUncertainErrorCodeMetricData",
+    "SendUncertainMetricsData",
     "SettingsData",
     "SettingsPatchRequest",
     "ValidationError",

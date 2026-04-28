@@ -185,6 +185,7 @@ class LoggingAndMemoryTests(unittest.TestCase):
         self.assertNotIn("my-token-value", current_text)
         self.assertTrue((temp_dir / "runtime.jsonl.1").exists())
 
+
     def test_memory_store_create_load_and_update_flows(self) -> None:
         temp_dir = TMP_ROOT / "observability_unit_memory" / str(uuid4())
         temp_dir.mkdir(parents=True, exist_ok=True)
@@ -244,6 +245,86 @@ class LoggingAndMemoryTests(unittest.TestCase):
         self.assertEqual(len(loaded.recent_conversation), 2)
         self.assertEqual(loaded.recent_conversation[0].messages, ["four", "five"])
         self.assertEqual(loaded.recent_conversation[1].messages, ["six", "seven"])
+
+
+class RuntimeSendPreflightTests(unittest.TestCase):
+    def test_conversation_send_preflight_preserves_block_order(self) -> None:
+        from wechat_ai.runtime import evaluate_conversation_send_preflight
+
+        empty = evaluate_conversation_send_preflight(
+            conversation_id=" friend:alice ",
+            text="   ",
+            control={"human_takeover": True, "paused": True, "blacklisted": True},
+        )
+        self.assertFalse(empty["allowed"])
+        self.assertEqual(empty["reason_code"], "EMPTY_TEXT")
+
+        takeover = evaluate_conversation_send_preflight(
+            conversation_id=" friend:alice ",
+            text="hello",
+            control={"human_takeover": True, "paused": True, "blacklisted": True},
+        )
+        self.assertFalse(takeover["allowed"])
+        self.assertEqual(takeover["reason_code"], "HUMAN_TAKEOVER")
+
+        paused = evaluate_conversation_send_preflight(
+            conversation_id="friend:alice",
+            text="hello",
+            control={"human_takeover": False, "paused": True, "blacklisted": True},
+        )
+        self.assertEqual(paused["reason_code"], "CONVERSATION_PAUSED")
+
+        blacklisted = evaluate_conversation_send_preflight(
+            conversation_id="friend:alice",
+            text="hello",
+            control={"human_takeover": False, "paused": False, "blacklisted": True},
+        )
+        self.assertEqual(blacklisted["reason_code"], "BLACKLISTED")
+
+    def test_conversation_send_preflight_applies_safety_after_control(self) -> None:
+        from wechat_ai.runtime import evaluate_conversation_send_preflight
+
+        blocked = evaluate_conversation_send_preflight(
+            conversation_id=" friend:alice ",
+            text="refund promise",
+            control={"human_takeover": False, "paused": False, "blacklisted": False},
+            safety_allowed=False,
+            safety_reason_code="SAFETY_REVIEW_REQUIRED",
+            safety_reason="HIGH_RISK_COMMITMENT",
+        )
+
+        self.assertFalse(blocked["allowed"])
+        self.assertEqual(blocked["conversation_id"], "friend:alice")
+        self.assertEqual(blocked["reason_code"], "SAFETY_REVIEW_REQUIRED")
+        self.assertEqual(blocked["reason"], "HIGH_RISK_COMMITMENT")
+
+    def test_send_coordinator_precheck_blocks_unresolved_uncertain_before_knowledge(self) -> None:
+        from wechat_ai.runtime import evaluate_send_coordinator_precheck
+
+        blocked = evaluate_send_coordinator_precheck(
+            has_unresolved_uncertain_send=True,
+            knowledge_precheck={"ok": False, "reason_code": "UNTRUSTED_KNOWLEDGE_EMBEDDINGS", "reason": "untrusted"},
+        )
+
+        self.assertFalse(blocked["ok"])
+        self.assertEqual(blocked["reason_code"], "UNRESOLVED_SEND_UNCERTAIN")
+
+    def test_send_coordinator_precheck_passes_through_knowledge_block(self) -> None:
+        from wechat_ai.runtime import evaluate_send_coordinator_precheck
+
+        blocked = evaluate_send_coordinator_precheck(
+            has_unresolved_uncertain_send=False,
+            knowledge_precheck={
+                "ok": False,
+                "reason_code": "UNTRUSTED_FAKE_EMBEDDINGS",
+                "reason": "fake embedding provider",
+                "embedding_provider": "FakeEmbeddings",
+            },
+        )
+
+        self.assertFalse(blocked["ok"])
+        self.assertEqual(blocked["reason_code"], "UNTRUSTED_FAKE_EMBEDDINGS")
+        self.assertEqual(blocked["embedding_provider"], "FakeEmbeddings")
 
 
 class GlobalAutoReplyTests(unittest.TestCase):
@@ -1815,6 +1896,7 @@ if __name__ == "__main__":
     suite = unittest.TestSuite()
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(ReplyEngineTests))
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(LoggingAndMemoryTests))
+    suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(RuntimeSendPreflightTests))
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(GlobalAutoReplyTests))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     print(json.dumps({"ok": result.wasSuccessful()}, ensure_ascii=False))

@@ -6,7 +6,7 @@ import { AppShell } from "@/components/app-shell"
 import { ErrorState, LoadingState } from "@/components/api-state"
 import { apiClient } from "@/lib/api"
 import { getDesktopShellBridge, type DesktopShellPreferences } from "@/lib/electron-shell"
-import type { PrivacyPolicy, Settings, SettingsPatch } from "@/lib/api"
+import type { PrivacyPolicy, SafetyPolicyAuditRecord, Settings, SettingsPatch } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import {
   ChevronDown,
@@ -57,6 +57,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("基础设置")
   const [settings, setSettings] = useState<Settings | null>(null)
   const [privacy, setPrivacy] = useState<PrivacyPolicy | null>(null)
+  const [safetyPolicyAudit, setSafetyPolicyAudit] = useState<SafetyPolicyAuditRecord[]>([])
   const [desktopPreferences, setDesktopPreferences] = useState<DesktopShellPreferences | null>(null)
   const [desktopShellAvailable, setDesktopShellAvailable] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -67,9 +68,10 @@ export default function SettingsPage() {
   async function loadSettings() {
     setError("")
     const shellBridge = getDesktopShellBridge()
-    const [settingsResponse, privacyResponse, shellPreferences] = await Promise.all([
+    const [settingsResponse, privacyResponse, safetyAuditResponse, shellPreferences] = await Promise.all([
       apiClient.getSettings(),
       apiClient.getPrivacyPolicy(),
+      apiClient.getSafetyPolicyAudit(5),
       shellBridge.getPreferences(),
     ])
     if (!settingsResponse.success || !privacyResponse.success) {
@@ -78,6 +80,7 @@ export default function SettingsPage() {
     }
     setSettings(settingsResponse.data)
     setPrivacy(privacyResponse.data)
+    setSafetyPolicyAudit(safetyAuditResponse.success && safetyAuditResponse.data ? safetyAuditResponse.data : [])
     setDesktopShellAvailable(shellBridge.isAvailable())
     setDesktopPreferences(shellPreferences)
     setLoading(false)
@@ -101,6 +104,8 @@ export default function SettingsPage() {
       }
       setSettings(response.data)
       setPrivacy(response.data.privacy)
+      const auditResponse = await apiClient.getSafetyPolicyAudit(5)
+      setSafetyPolicyAudit(auditResponse.success && auditResponse.data ? auditResponse.data : [])
       setMessage(successMessage)
     })
   }
@@ -189,6 +194,7 @@ export default function SettingsPage() {
                   updateSettings={updateSettings}
                   updatePrivacy={updatePrivacy}
                   setSensitiveReview={setSensitiveReview}
+                  safetyPolicyAudit={safetyPolicyAudit}
                 />
               ) : null}
               {activeTab === "回复设置" ? (
@@ -254,6 +260,7 @@ function BaseSettings({
   updateSettings,
   updatePrivacy,
   setSensitiveReview,
+  safetyPolicyAudit,
 }: {
   settings: Settings
   privacy: PrivacyPolicy
@@ -261,6 +268,7 @@ function BaseSettings({
   updateSettings: (patch: SettingsPatch, successMessage?: string) => void
   updatePrivacy: (patch: Partial<PrivacyPolicy>, successMessage?: string) => void
   setSensitiveReview: (nextValue: boolean) => void
+  safetyPolicyAudit: SafetyPolicyAuditRecord[]
 }) {
   function isRuleGroupEnabled(ruleGroup: string) {
     const configured = settings.safety_policy.rule_groups?.[ruleGroup]
@@ -364,6 +372,7 @@ function BaseSettings({
         desc="恢复 prompt 注入、敏感信息、业务风险的默认规则组配置"
         right={<IconButton label="恢复默认" disabled={pending} onClick={resetSafetyPolicy} />}
       />
+      <SafetyPolicyAuditTrail records={safetyPolicyAudit} />
       <SettingRow
         iconBg="bg-slate-600"
         icon={<FileClock className="h-5 w-5 text-white" />}
@@ -382,6 +391,45 @@ function BaseSettings({
       />
     </>
   )
+}
+
+function SafetyPolicyAuditTrail({ records }: { records: SafetyPolicyAuditRecord[] }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-5 py-4">
+      <div className="mb-3 flex items-center gap-2">
+        <FileClock className="h-4 w-4 text-slate-500" />
+        <h3 className="text-sm font-semibold text-slate-800">Safety Policy Audit</h3>
+      </div>
+      {records.length ? (
+        <div className="space-y-2">
+          {records.map((record) => (
+            <div key={`${record.timestamp}-${record.action}`} className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-medium text-slate-700">
+                <span>{record.action}</span>
+                <span>{record.timestamp || "-"}</span>
+                <span>operator: {record.operator || "system"}</span>
+                <span>source: {record.source || "service"}</span>
+              </div>
+              <div className="mt-1 text-slate-500">
+                changed_rule_groups: {formatChangedRuleGroups(record.changed_rule_groups)}
+                {record.reset_to_defaults ? " reset_to_defaults" : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">No safety policy audit records.</p>
+      )}
+    </div>
+  )
+}
+
+function formatChangedRuleGroups(groups: Record<string, boolean>) {
+  const entries = Object.entries(groups)
+  if (!entries.length) {
+    return "-"
+  }
+  return entries.map(([key, enabled]) => `${key}=${enabled ? "on" : "off"}`).join(", ")
 }
 
 function ReplySettings({

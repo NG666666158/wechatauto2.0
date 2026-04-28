@@ -23,11 +23,32 @@ class DashboardPendingData(BaseModel):
     identity_candidates: int = 0
 
 
+class SendUncertainMetricItemData(BaseModel):
+    count: int = 0
+
+
+class SendUncertainErrorCodeMetricData(SendUncertainMetricItemData):
+    error_code: str = ""
+
+
+class SendUncertainConversationMetricData(SendUncertainMetricItemData):
+    conversation_id: str = ""
+    target_title: str = ""
+
+
+class SendUncertainMetricsData(BaseModel):
+    unresolved_total: int = 0
+    recent_24h: int = 0
+    top_error_codes: list[SendUncertainErrorCodeMetricData] = Field(default_factory=list)
+    top_conversations: list[SendUncertainConversationMetricData] = Field(default_factory=list)
+
+
 class DashboardSummaryData(BaseModel):
     app: AppStatusData | dict[str, Any] = Field(default_factory=AppStatusData)
     runtime: RuntimeStatusData = Field(default_factory=RuntimeStatusData)
     knowledge: KnowledgeStatusData | dict[str, Any] = Field(default_factory=KnowledgeStatusData)
     pending: DashboardPendingData = Field(default_factory=DashboardPendingData)
+    send_uncertain: SendUncertainMetricsData = Field(default_factory=SendUncertainMetricsData)
 
 
 class WorkHoursData(BaseModel):
@@ -65,6 +86,15 @@ class SafetyPolicyConfigData(BaseModel):
     input_rules: list[SafetyPatternRuleData] = Field(default_factory=list)
     output_rules: list[SafetyPatternRuleData] = Field(default_factory=list)
     rule_groups: dict[str, bool] = Field(default_factory=dict)
+
+
+class SafetyPolicyAuditRecordData(BaseModel):
+    timestamp: str = ""
+    action: str = ""
+    changed_rule_groups: dict[str, bool] = Field(default_factory=dict)
+    reset_to_defaults: bool = False
+    operator: str = ""
+    source: str = ""
 
 
 class SettingsData(BaseModel):
