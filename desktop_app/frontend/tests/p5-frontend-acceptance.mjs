@@ -63,7 +63,9 @@ const checks = [
         "buildWebKnowledgeFromDocuments",
         "getKnowledgeAcceptanceHistory",
         "getKnowledgeTrustDiagnostics",
+        "rebuildKnowledgeWithTrustedEmbeddings",
         "KnowledgeTrustDiagnostics",
+        "KnowledgeTrustedRebuildResult",
         "KnowledgeAcceptanceHistoryRecord",
         "getRecentLogs",
         "RecentLogFilters",
@@ -302,9 +304,16 @@ const checks = [
         source.includes("trustDiagnostics") &&
         source.includes("blocked_for_real_send") &&
         source.includes("recommended_actions") &&
+        source.includes("trusted_rebuild_available") &&
+        source.includes("trusted_rebuild_provider") &&
+        source.includes("trusted_rebuild_block_reason") &&
         source.includes("rebuild_with_trusted_embeddings") &&
         source.includes("route_replies_to_manual_review") &&
-        apiSource.includes('"/knowledge/trust-diagnostics"')
+        source.includes("rebuildKnowledgeWithTrustedEmbeddings") &&
+        source.includes("trustedRebuildResult") &&
+        source.includes("acceptance_query") &&
+        apiSource.includes('"/knowledge/trust-diagnostics"') &&
+        apiSource.includes('"/knowledge/trusted-rebuild"')
       )
     },
   },

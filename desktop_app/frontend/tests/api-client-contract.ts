@@ -12,6 +12,7 @@ import type {
   IdentityDraft,
   KnowledgeAcceptanceHistoryRecord,
   KnowledgeTrustDiagnostics,
+  KnowledgeTrustedRebuildResult,
   KnowledgeImportResult,
   KnowledgeSearchResult,
   PrivacyPolicy,
@@ -124,7 +125,14 @@ async function assertApiClientContract() {
   const knowledgeStatus: ApiResponse<import("@/lib/api").KnowledgeStatus> = await apiClient.getKnowledgeStatus()
   const knowledgeTrustDiagnostics: ApiResponse<KnowledgeTrustDiagnostics> = await apiClient.getKnowledgeTrustDiagnostics()
   const knowledgeBlockedForRealSend: boolean | undefined = knowledgeTrustDiagnostics.data?.blocked_for_real_send
+  const knowledgeTrustedRebuildAvailable: boolean | undefined = knowledgeTrustDiagnostics.data?.trusted_rebuild_available
+  const knowledgeTrustedRebuildProvider: string | null | undefined = knowledgeTrustDiagnostics.data?.trusted_rebuild_provider
   const knowledgeRecommendedAction: string | undefined = knowledgeTrustDiagnostics.data?.recommended_actions[0]
+  const trustedRebuild: ApiResponse<KnowledgeTrustedRebuildResult> = await apiClient.rebuildKnowledgeWithTrustedEmbeddings({
+    acceptance_query: "trial policy",
+  })
+  const trustedRebuildAccepted: boolean | undefined = trustedRebuild.data?.accepted
+  const trustedRebuildStatus: string | undefined = trustedRebuild.data?.status
   const embeddingProvider: string | null | undefined = knowledgeStatus.data?.embedding_provider
   const embeddingTrusted: boolean | null | undefined = knowledgeStatus.data?.embedding_trusted
   const knowledgeSearch: ApiResponse<KnowledgeSearchResult[]> = await apiClient.searchKnowledge("试用政策", 5)
@@ -231,7 +239,12 @@ async function assertApiClientContract() {
     knowledgeStatus,
     knowledgeTrustDiagnostics,
     knowledgeBlockedForRealSend,
+    knowledgeTrustedRebuildAvailable,
+    knowledgeTrustedRebuildProvider,
     knowledgeRecommendedAction,
+    trustedRebuild,
+    trustedRebuildAccepted,
+    trustedRebuildStatus,
     embeddingProvider,
     embeddingTrusted,
     knowledgeSearch,

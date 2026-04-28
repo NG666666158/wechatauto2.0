@@ -10,7 +10,10 @@
       "route_replies_to_manual_review"
     ],
     "trust_reason": "fake_embedding_provider",
-    "trust_status": "fake"
+    "trust_status": "fake",
+    "trusted_rebuild_available": true,
+    "trusted_rebuild_block_reason": "",
+    "trusted_rebuild_provider": "TrustedLocalEmbeddings"
   },
   "error": null,
   "success": true,

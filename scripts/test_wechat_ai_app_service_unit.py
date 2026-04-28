@@ -1441,6 +1441,72 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_knowledge_trust_diagnostics_reports_trusted_rebuild_availability(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_knowledge_trusted_rebuild_available")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+
+            default_diagnostics = service.get_knowledge_trust_diagnostics()
+
+            self.assertFalse(default_diagnostics["trusted_rebuild_available"])
+            self.assertEqual(default_diagnostics["trusted_rebuild_provider"], "FakeEmbeddings")
+            self.assertEqual(default_diagnostics["trusted_rebuild_block_reason"], "fake_embedding_provider")
+
+            with patch.dict("os.environ", {"WECHATAUTO_EMBEDDING_PROVIDER": "trusted_local"}):
+                trusted_diagnostics = service.get_knowledge_trust_diagnostics()
+
+            self.assertTrue(trusted_diagnostics["trusted_rebuild_available"])
+            self.assertEqual(trusted_diagnostics["trusted_rebuild_provider"], "TrustedLocalEmbeddings")
+            self.assertEqual(trusted_diagnostics["trusted_rebuild_block_reason"], "")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_rebuild_knowledge_with_trusted_embeddings_rejects_fake_provider(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_knowledge_trusted_rebuild_reject")
+        try:
+            source = temp_dir / "policy.txt"
+            source.write_text("trial policy supports 7 days", encoding="utf-8")
+            service = DesktopAppService(data_root=temp_dir)
+            service.import_knowledge_files([source])
+
+            result = service.rebuild_knowledge_with_trusted_embeddings()
+
+            self.assertFalse(result["accepted"])
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual(result["reason_code"], "TRUSTED_EMBEDDING_PROVIDER_UNAVAILABLE")
+            self.assertEqual(result["trusted_rebuild_provider"], "FakeEmbeddings")
+            self.assertEqual(service.get_knowledge_status()["embedding_provider"], "FakeEmbeddings")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_rebuild_knowledge_with_trusted_embeddings_reindexes_and_records_acceptance(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_knowledge_trusted_rebuild")
+        try:
+            source = temp_dir / "policy.txt"
+            source.write_text("trial policy supports 7 days after registration", encoding="utf-8")
+            service = DesktopAppService(data_root=temp_dir)
+            service.import_knowledge_files([source])
+
+            with patch.dict("os.environ", {"WECHATAUTO_EMBEDDING_PROVIDER": "trusted_local"}):
+                result = service.rebuild_knowledge_with_trusted_embeddings(acceptance_query="trial policy")
+
+            self.assertTrue(result["accepted"])
+            self.assertEqual(result["status"], "rebuilt")
+            self.assertEqual(result["index_status"]["embedding_provider"], "TrustedLocalEmbeddings")
+            self.assertTrue(result["index_status"]["embedding_trusted"])
+            self.assertEqual(result["trust_diagnostics"]["trust_status"], "trusted")
+            self.assertIn("monitor_acceptance_history", result["trust_diagnostics"]["recommended_actions"])
+            self.assertEqual(result["acceptance_snapshot"]["search_query"], "trial policy")
+            self.assertTrue(service.list_knowledge_acceptance_history(limit=1)[0]["embedding_trusted"])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_recent_logs_privacy_policy_and_environment_are_available(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 

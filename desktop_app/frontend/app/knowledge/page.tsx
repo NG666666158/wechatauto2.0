@@ -5,7 +5,7 @@ import { AppShell } from "@/components/app-shell"
 import { EmptyState, ErrorState, LoadingState } from "@/components/api-state"
 import { useServerEvents } from "@/hooks/use-server-events"
 import { apiClient } from "@/lib/api"
-import type { KnowledgeAcceptanceHistoryRecord, KnowledgeImportResult, KnowledgeSearchResult, KnowledgeStatus, KnowledgeTrustDiagnostics, WebKnowledgeBuildResult } from "@/lib/api"
+import type { KnowledgeAcceptanceHistoryRecord, KnowledgeImportResult, KnowledgeSearchResult, KnowledgeStatus, KnowledgeTrustDiagnostics, KnowledgeTrustedRebuildResult, WebKnowledgeBuildResult } from "@/lib/api"
 import { BookOpen, Cloud, Database, FileText, History, RefreshCw, Search, ShieldCheck, UploadCloud } from "lucide-react"
 
 export default function KnowledgePage() {
@@ -15,10 +15,11 @@ export default function KnowledgePage() {
   const [searchResults, setSearchResults] = useState<KnowledgeSearchResult[]>([])
   const [acceptanceHistory, setAcceptanceHistory] = useState<KnowledgeAcceptanceHistoryRecord[]>([])
   const [trustDiagnostics, setTrustDiagnostics] = useState<KnowledgeTrustDiagnostics | null>(null)
+  const [trustedRebuildResult, setTrustedRebuildResult] = useState<KnowledgeTrustedRebuildResult | null>(null)
   const [importResult, setImportResult] = useState<KnowledgeImportResult | null>(null)
   const [webResult, setWebResult] = useState<WebKnowledgeBuildResult | null>(null)
   const [loadingStatus, setLoadingStatus] = useState(true)
-  const [busyAction, setBusyAction] = useState<"search" | "acceptance" | "import" | "web" | "">("")
+  const [busyAction, setBusyAction] = useState<"search" | "acceptance" | "import" | "web" | "trusted-rebuild" | "">("")
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
 
@@ -163,6 +164,32 @@ export default function KnowledgePage() {
     }
   }
 
+  async function rebuildTrustedKnowledge() {
+    setBusyAction("trusted-rebuild")
+    setError("")
+    setNotice("")
+    try {
+      const acceptance_query = query.trim()
+      const response = await apiClient.rebuildKnowledgeWithTrustedEmbeddings({ acceptance_query })
+      if (!response.success || !response.data) {
+        setError(response.error ? `${response.error.code}: ${response.error.message}` : "Trusted rebuild failed")
+        return
+      }
+      setTrustedRebuildResult(response.data)
+      if (response.data.acceptance_snapshot?.retrieved_chunks) {
+        setSearchResults(response.data.acceptance_snapshot.retrieved_chunks)
+      }
+      setNotice(response.data.accepted ? "Trusted RAG rebuild completed." : `Trusted RAG rebuild blocked: ${response.data.reason_code || response.data.status}`)
+      await loadStatus()
+      await loadAcceptanceHistory()
+      await loadTrustDiagnostics()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Trusted rebuild API unavailable")
+    } finally {
+      setBusyAction("")
+    }
+  }
+
   function handleDrop(event: React.DragEvent<HTMLTextAreaElement>) {
     event.preventDefault()
     const dropped = Array.from(event.dataTransfer.files).map((file) => filePathFromDrop(file))
@@ -190,7 +217,13 @@ export default function KnowledgePage() {
           {notice ? <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
           {loadingStatus ? <LoadingState label="正在读取知识库状态" /> : <StatusPanel status={status} onRefresh={loadStatus} />}
 
-          <KnowledgeTrustGate diagnostics={trustDiagnostics} />
+          <KnowledgeTrustGate
+            diagnostics={trustDiagnostics}
+            busy={busyAction === "trusted-rebuild"}
+            query={query}
+            result={trustedRebuildResult}
+            onTrustedRebuild={rebuildTrustedKnowledge}
+          />
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center gap-2 text-[15px] font-semibold text-slate-800">
@@ -295,7 +328,19 @@ export default function KnowledgePage() {
   )
 }
 
-function KnowledgeTrustGate({ diagnostics }: { diagnostics: KnowledgeTrustDiagnostics | null }) {
+function KnowledgeTrustGate({
+  diagnostics,
+  busy,
+  query,
+  result,
+  onTrustedRebuild,
+}: {
+  diagnostics: KnowledgeTrustDiagnostics | null
+  busy: boolean
+  query: string
+  result: KnowledgeTrustedRebuildResult | null
+  onTrustedRebuild: () => void
+}) {
   if (!diagnostics) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -317,8 +362,41 @@ function KnowledgeTrustGate({ diagnostics }: { diagnostics: KnowledgeTrustDiagno
         <EvidenceCell label="real_send" value={diagnostics.real_send_enabled ? "enabled" : "disabled"} />
         <EvidenceCell label="blocked_for_real_send" value={diagnostics.blocked_for_real_send ? "blocked" : "not blocked"} />
         <EvidenceCell label="reason" value={diagnostics.trust_reason || "-"} />
+        <EvidenceCell label="trusted_rebuild_available" value={diagnostics.trusted_rebuild_available ? "available" : "blocked"} />
+        <EvidenceCell label="trusted_rebuild_provider" value={diagnostics.trusted_rebuild_provider || "-"} />
+        <EvidenceCell label="trusted_rebuild_block_reason" value={diagnostics.trusted_rebuild_block_reason || "-"} />
+        <EvidenceCell label="acceptance_query" value={query.trim() || "-"} />
       </div>
       <HistoryTokenRow label="recommended_actions" values={diagnostics.recommended_actions.map(formatRecommendedAction)} />
+      <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-slate-700">Trusted rebuild</div>
+          <div className="mt-1 truncate text-xs text-slate-500">
+            {diagnostics.trusted_rebuild_available
+              ? `provider: ${diagnostics.trusted_rebuild_provider || "-"}`
+              : formatTrustedRebuildBlockReason(diagnostics.trusted_rebuild_block_reason)}
+          </div>
+        </div>
+        <button
+          disabled={busy || !diagnostics.trusted_rebuild_available}
+          onClick={onTrustedRebuild}
+          className="flex h-9 shrink-0 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-white disabled:text-slate-400"
+        >
+          <ShieldCheck className="h-3.5 w-3.5" />
+          {busy ? "rebuilding" : "rebuild trusted index"}
+        </button>
+      </div>
+      {result ? (
+        <div className="mt-3 rounded-xl border border-slate-100 bg-white px-3 py-3 text-xs text-slate-500">
+          <div className="font-semibold text-slate-700">Last trusted rebuild result</div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <EvidenceCell label="status" value={result.status || "-"} />
+            <EvidenceCell label="accepted" value={result.accepted ? "accepted" : "blocked"} />
+            <EvidenceCell label="provider" value={result.trusted_rebuild_provider || "-"} />
+            <EvidenceCell label="reason_code" value={result.reason_code || "-"} />
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -454,6 +532,13 @@ function formatRecommendedAction(action: string) {
   if (action === "import_knowledge_files") return "import_knowledge_files"
   if (action === "monitor_acceptance_history") return "monitor_acceptance_history"
   return action
+}
+
+function formatTrustedRebuildBlockReason(reason: string) {
+  if (reason === "fake_embedding_provider") return "fake_embedding_provider"
+  if (reason === "embedding_trust_not_declared") return "embedding_trust_not_declared"
+  if (reason === "embedding_provider_missing") return "embedding_provider_missing"
+  return reason || "trusted embedding provider unavailable"
 }
 
 function EvidenceCell({ label, value }: { label: string; value: string }) {

@@ -11,9 +11,10 @@ from wechat_ai.server.schemas import (
     KnowledgeSearchResultData,
     KnowledgeStatusData,
     KnowledgeTrustDiagnosticsData,
+    KnowledgeTrustedRebuildResultData,
     WebKnowledgeBuildResultData,
 )
-from wechat_ai.server.schemas.frontend import KnowledgeImportRequest, WebKnowledgeBuildRequest
+from wechat_ai.server.schemas.frontend import KnowledgeImportRequest, KnowledgeTrustedRebuildRequest, WebKnowledgeBuildRequest
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
@@ -26,6 +27,26 @@ def knowledge_status(request: Request) -> dict[str, object]:
 @router.get("/trust-diagnostics", response_model=ApiResponse[KnowledgeTrustDiagnosticsData])
 def knowledge_trust_diagnostics(request: Request) -> dict[str, object]:
     return success_response(desktop_service(request).get_knowledge_trust_diagnostics(), trace_id=request.state.trace_id)
+
+
+@router.post("/trusted-rebuild", response_model=ApiResponse[KnowledgeTrustedRebuildResultData])
+def rebuild_knowledge_with_trusted_embeddings(
+    payload: KnowledgeTrustedRebuildRequest,
+    request: Request,
+) -> dict[str, object]:
+    data = desktop_service(request).rebuild_knowledge_with_trusted_embeddings(
+        acceptance_query=payload.acceptance_query,
+    )
+    publish_event(
+        request,
+        "knowledge.progress",
+        {
+            "status": data.get("status", "rebuilt") if isinstance(data, dict) else "rebuilt",
+            "trusted_rebuild": True,
+            "accepted": bool(data.get("accepted", False)) if isinstance(data, dict) else False,
+        },
+    )
+    return success_response(data, trace_id=request.state.trace_id)
 
 
 @router.get("/search", response_model=ApiResponse[list[KnowledgeSearchResultData]])

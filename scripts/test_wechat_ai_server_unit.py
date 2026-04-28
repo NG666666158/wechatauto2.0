@@ -192,7 +192,43 @@ class FakeDesktopService:
             "trust_reason": "fake_embedding_provider",
             "real_send_enabled": True,
             "blocked_for_real_send": True,
+            "trusted_rebuild_available": True,
+            "trusted_rebuild_provider": "TrustedLocalEmbeddings",
+            "trusted_rebuild_block_reason": "",
             "recommended_actions": ["rebuild_with_trusted_embeddings", "route_replies_to_manual_review"],
+        }
+
+    def rebuild_knowledge_with_trusted_embeddings(self, *, acceptance_query: str = "") -> dict[str, object]:
+        return {
+            "accepted": True,
+            "status": "rebuilt",
+            "reason_code": "",
+            "reason": "",
+            "trusted_rebuild_provider": "TrustedLocalEmbeddings",
+            "trusted_rebuild_block_reason": "",
+            "index_status": {
+                "ready": True,
+                "index_path": "memory://test-index",
+                "documents_loaded": 1,
+                "chunks_created": 1,
+                "embedding_provider": "TrustedLocalEmbeddings",
+                "embedding_trusted": True,
+                "supported_extensions": [".txt"],
+            },
+            "trust_diagnostics": {
+                "ready": True,
+                "embedding_provider": "TrustedLocalEmbeddings",
+                "embedding_trusted": True,
+                "trust_status": "trusted",
+                "trust_reason": "",
+                "real_send_enabled": True,
+                "blocked_for_real_send": False,
+                "trusted_rebuild_available": True,
+                "trusted_rebuild_provider": "TrustedLocalEmbeddings",
+                "trusted_rebuild_block_reason": "",
+                "recommended_actions": ["monitor_acceptance_history"],
+            },
+            "acceptance_snapshot": self.build_knowledge_acceptance_snapshot(acceptance_query or "trial policy"),
         }
 
     def list_reply_jobs(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, object]]:
@@ -718,6 +754,7 @@ def test_openapi_schema_is_available() -> None:
     assert "/api/v1/conversations/{conversation_id}/send" in payload["paths"]
     assert "/api/v1/knowledge/status" in payload["paths"]
     assert "/api/v1/knowledge/trust-diagnostics" in payload["paths"]
+    assert "/api/v1/knowledge/trusted-rebuild" in payload["paths"]
     assert "/api/v1/logs/recent" in payload["paths"]
     assert "/api/v1/privacy/policy" in payload["paths"]
     assert "/api/v1/privacy/apply-retention" in payload["paths"]
@@ -964,7 +1001,24 @@ def test_knowledge_trust_diagnostics_endpoint_is_available() -> None:
     assert payload["success"] is True
     assert payload["data"]["trust_status"] == "fake"
     assert payload["data"]["blocked_for_real_send"] is True
+    assert payload["data"]["trusted_rebuild_available"] is True
+    assert payload["data"]["trusted_rebuild_provider"] == "TrustedLocalEmbeddings"
     assert "rebuild_with_trusted_embeddings" in payload["data"]["recommended_actions"]
+
+
+def test_knowledge_trusted_rebuild_endpoint_is_available() -> None:
+    from wechat_ai.server import create_app
+
+    client = TestClient(create_app(desktop_service=FakeDesktopService()))
+    response = client.post("/api/v1/knowledge/trusted-rebuild", json={"acceptance_query": "trial policy"})
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["success"] is True
+    assert payload["data"]["accepted"] is True
+    assert payload["data"]["index_status"]["embedding_trusted"] is True
+    assert payload["data"]["trust_diagnostics"]["trust_status"] == "trusted"
+    assert payload["data"]["acceptance_snapshot"]["search_query"] == "trial policy"
 
 
 def test_background_event_relay_primes_bus_without_per_client_sync_calls() -> None:

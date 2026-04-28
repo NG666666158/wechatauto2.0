@@ -83,7 +83,26 @@ export type KnowledgeTrustDiagnostics = {
   trust_reason: string
   real_send_enabled: boolean
   blocked_for_real_send: boolean
+  trusted_rebuild_available: boolean
+  trusted_rebuild_provider: string | null
+  trusted_rebuild_block_reason: string
   recommended_actions: string[]
+}
+
+export type KnowledgeTrustedRebuildRequest = {
+  acceptance_query?: string
+}
+
+export type KnowledgeTrustedRebuildResult = {
+  accepted: boolean
+  status: string
+  reason_code: string
+  reason: string
+  trusted_rebuild_provider: string | null
+  trusted_rebuild_block_reason: string
+  index_status: KnowledgeStatus
+  trust_diagnostics: KnowledgeTrustDiagnostics
+  acceptance_snapshot: KnowledgeAcceptanceSnapshot | null
 }
 
 export type KnowledgeAcceptanceHistoryRecord = {
@@ -568,6 +587,8 @@ export const apiClient = {
   updateGlobalSelfIdentity: (patchBody: SelfIdentityPatch) => patch<SelfIdentity>("/identity/self/global", patchBody),
   getKnowledgeStatus: () => request<KnowledgeStatus>("/knowledge/status"),
   getKnowledgeTrustDiagnostics: () => request<KnowledgeTrustDiagnostics>("/knowledge/trust-diagnostics"),
+  rebuildKnowledgeWithTrustedEmbeddings: (body: KnowledgeTrustedRebuildRequest = {}) =>
+    post<KnowledgeTrustedRebuildResult>("/knowledge/trusted-rebuild", body),
   getKnowledgeAcceptanceHistory: (limit = 20) =>
     request<KnowledgeAcceptanceHistoryRecord[]>(withQuery("/debug/knowledge-acceptance/history", { limit })),
   buildKnowledgeAcceptanceSnapshot: (query: string) =>

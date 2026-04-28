@@ -3,7 +3,7 @@
   "api_version": "0.1.0",
   "base_path": "/api/v1",
   "contract_version": "p4-baseline-v1",
-  "endpoint_count": 56,
+  "endpoint_count": 57,
   "endpoints": [
     {
       "id": "get_api_v1_controls_conversations_conversation_id",
@@ -474,6 +474,21 @@
       ]
     },
     {
+      "id": "post_api_v1_knowledge_trusted_rebuild",
+      "method": "POST",
+      "path": "/api/v1/knowledge/trusted-rebuild",
+      "request_schema": "KnowledgeTrustedRebuildRequest",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "ApiResponse_KnowledgeTrustedRebuildResultData_",
+      "summary": "Rebuild Knowledge With Trusted Embeddings",
+      "tags": [
+        "knowledge"
+      ]
+    },
+    {
       "id": "post_api_v1_knowledge_web_build",
       "method": "POST",
       "path": "/api/v1/knowledge/web-build",
@@ -836,6 +851,8 @@
     ],
     "knowledge": [
       "/api/v1/knowledge/status",
+      "/api/v1/knowledge/trust-diagnostics",
+      "/api/v1/knowledge/trusted-rebuild",
       "/api/v1/knowledge/search",
       "/api/v1/knowledge/import",
       "/api/v1/knowledge/web-build"
@@ -854,7 +871,7 @@
       "/api/v1/errors/catalog"
     ]
   },
-  "schema_count": 97,
+  "schema_count": 100,
   "schemas": [
     "ApiErrorPayload",
     "ApiResponse_ConversationControlData_",
@@ -866,6 +883,7 @@
     "ApiResponse_KnowledgeImportResultData_",
     "ApiResponse_KnowledgeStatusData_",
     "ApiResponse_KnowledgeTrustDiagnosticsData_",
+    "ApiResponse_KnowledgeTrustedRebuildResultData_",
     "ApiResponse_LogsSummaryData_",
     "ApiResponse_PrivacyPolicyData_",
     "ApiResponse_PromptAcceptancePreviewData_",
@@ -914,6 +932,8 @@
     "KnowledgeSearchResultData",
     "KnowledgeStatusData",
     "KnowledgeTrustDiagnosticsData",
+    "KnowledgeTrustedRebuildRequest",
+    "KnowledgeTrustedRebuildResultData",
     "LogsSummaryData",
     "PrivacyPolicyData",
     "PrivacyPolicyPatchRequest",

@@ -1,0 +1,46 @@
+{
+  "data": {
+    "acceptance_snapshot": null,
+    "accepted": true,
+    "index_status": {
+      "chunks_created": 426,
+      "documents_loaded": 18,
+      "embedding_provider": "TrustedLocalEmbeddings",
+      "embedding_trusted": true,
+      "index_path": "data/knowledge/local_knowledge_index.json",
+      "last_built_at": "2026-04-25T09:45:00+08:00",
+      "ready": true,
+      "supported_extensions": [
+        ".pdf",
+        ".docx",
+        ".txt",
+        ".md",
+        ".png",
+        ".jpg"
+      ]
+    },
+    "reason": "",
+    "reason_code": "",
+    "status": "rebuilt",
+    "trust_diagnostics": {
+      "blocked_for_real_send": false,
+      "embedding_provider": "TrustedLocalEmbeddings",
+      "embedding_trusted": true,
+      "ready": true,
+      "real_send_enabled": true,
+      "recommended_actions": [
+        "monitor_acceptance_history"
+      ],
+      "trust_reason": "",
+      "trust_status": "trusted",
+      "trusted_rebuild_available": true,
+      "trusted_rebuild_block_reason": "",
+      "trusted_rebuild_provider": "TrustedLocalEmbeddings"
+    },
+    "trusted_rebuild_block_reason": "",
+    "trusted_rebuild_provider": "TrustedLocalEmbeddings"
+  },
+  "error": null,
+  "success": true,
+  "trace_id": "fixture-knowledge-trusted-rebuild"
+}

@@ -24,6 +24,7 @@ class StabilityAcceptanceTests(unittest.TestCase):
         self.assertTrue(report["does_not_send_messages"])
         self.assertTrue(report["accepted"])
         self.assertTrue(report["checks"]["source_contracts"]["rag_trust_diagnostics"]["tokens_present"])
+        self.assertTrue(report["checks"]["source_contracts"]["rag_trusted_rebuild"]["tokens_present"])
         self.assertEqual(report["failures"], [])
 
     def test_stability_acceptance_http_probe_checks_required_fields(self) -> None:
@@ -48,6 +49,7 @@ class StabilityAcceptanceTests(unittest.TestCase):
         self.assertTrue(report["checks"]["http_contracts"]["send_uncertain_metrics"]["required_fields_present"])
         self.assertTrue(report["checks"]["http_contracts"]["knowledge_acceptance"]["required_fields_present"])
         self.assertTrue(report["checks"]["http_contracts"]["knowledge_trust_diagnostics"]["required_fields_present"])
+        self.assertTrue(report["checks"]["http_contracts"]["knowledge_trusted_rebuild"]["required_fields_present"])
 
     def test_stability_acceptance_cli_outputs_json(self) -> None:
         result = subprocess.run(
@@ -70,7 +72,12 @@ class StabilityAcceptanceTests(unittest.TestCase):
 
 class _StabilityApiHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
-        payload = self._payload_for_path(self.path)
+        self._send_payload(self._payload_for_path(self.path))
+
+    def do_POST(self) -> None:  # noqa: N802
+        self._send_payload(self._payload_for_path(self.path))
+
+    def _send_payload(self, payload: dict[str, object]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -107,7 +114,17 @@ class _StabilityApiHandler(BaseHTTPRequestHandler):
                 "data": {
                     "trust_status": "fake",
                     "blocked_for_real_send": True,
+                    "trusted_rebuild_available": True,
                     "recommended_actions": ["rebuild_with_trusted_embeddings"],
+                },
+            }
+        if path.startswith("/api/v1/knowledge/trusted-rebuild"):
+            return {
+                "success": True,
+                "data": {
+                    "accepted": True,
+                    "status": "rebuilt",
+                    "trust_diagnostics": {"trust_status": "trusted"},
                 },
             }
         return {"success": False, "error": {"code": "NOT_FOUND", "message": path}}

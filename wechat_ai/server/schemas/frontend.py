@@ -26,6 +26,10 @@ class WebKnowledgeBuildRequest(StrictRequestModel):
         return _clean_nonblank_strings(value, field_name="file_paths")
 
 
+class KnowledgeTrustedRebuildRequest(StrictRequestModel):
+    acceptance_query: str = Field("", max_length=500)
+
+
 class ReplySuggestionRequest(StrictRequestModel):
     message_text: str = Field("", max_length=8000)
 

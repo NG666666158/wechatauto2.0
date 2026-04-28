@@ -26,7 +26,22 @@ class KnowledgeTrustDiagnosticsData(BaseModel):
     trust_reason: str = ""
     real_send_enabled: bool = False
     blocked_for_real_send: bool = False
+    trusted_rebuild_available: bool = False
+    trusted_rebuild_provider: str | None = None
+    trusted_rebuild_block_reason: str = ""
     recommended_actions: list[str] = Field(default_factory=list)
+
+
+class KnowledgeTrustedRebuildResultData(BaseModel):
+    accepted: bool = False
+    status: str = ""
+    reason_code: str = ""
+    reason: str = ""
+    trusted_rebuild_provider: str | None = None
+    trusted_rebuild_block_reason: str = ""
+    index_status: "KnowledgeStatusData" = Field(default_factory=lambda: KnowledgeStatusData())
+    trust_diagnostics: KnowledgeTrustDiagnosticsData = Field(default_factory=KnowledgeTrustDiagnosticsData)
+    acceptance_snapshot: "KnowledgeAcceptanceSnapshotData | None" = None
 
 
 class DashboardPendingData(BaseModel):

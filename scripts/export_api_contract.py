@@ -123,7 +123,14 @@ def build_api_contract(openapi: dict[str, Any]) -> dict[str, Any]:
             "home": ["/api/v1/dashboard/summary", "/api/v1/runtime/status", "/api/v1/runtime/bootstrap-check", "/api/v1/runtime/bootstrap-start"],
             "messages": ["/api/v1/conversations", "/api/v1/conversations/{conversation_id}", "/api/v1/conversations/{conversation_id}/suggest", "/api/v1/conversations/{conversation_id}/send"],
             "customers": ["/api/v1/customers", "/api/v1/customers/{customer_id}", "/api/v1/identity/drafts", "/api/v1/identity/candidates"],
-            "knowledge": ["/api/v1/knowledge/status", "/api/v1/knowledge/search", "/api/v1/knowledge/import", "/api/v1/knowledge/web-build"],
+            "knowledge": [
+                "/api/v1/knowledge/status",
+                "/api/v1/knowledge/trust-diagnostics",
+                "/api/v1/knowledge/trusted-rebuild",
+                "/api/v1/knowledge/search",
+                "/api/v1/knowledge/import",
+                "/api/v1/knowledge/web-build",
+            ],
             "settings": ["/api/v1/settings", "/api/v1/privacy/policy", "/api/v1/environment/wechat", "/api/v1/controls/conversations/{conversation_id}", "/api/v1/errors/catalog"],
         },
     }

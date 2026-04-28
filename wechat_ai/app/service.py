@@ -17,7 +17,7 @@ from wechat_ai.identity import identity_admin
 from wechat_ai.logging_utils import sanitize_text, tail_jsonl_events, utc_timestamp
 from wechat_ai.models import Message
 from wechat_ai.orchestration.prompt_builder import PromptBuilder
-from wechat_ai.rag.embeddings import EmbeddingProviderInfo, FakeEmbeddings
+from wechat_ai.rag.embeddings import EmbeddingProviderInfo, FakeEmbeddings, build_embeddings, embedding_provider_info
 from wechat_ai.rag.hybrid_retriever import HybridRetriever
 from wechat_ai.rag.keyword_retriever import KeywordRetriever
 from wechat_ai.rag.retriever import LocalIndexRetriever, index_has_trusted_embeddings
@@ -1428,6 +1428,7 @@ class DesktopAppService:
     def get_knowledge_trust_diagnostics(self) -> dict[str, Any]:
         status = self.knowledge_importer.get_status()
         trust = self._knowledge_embedding_trust_metadata(status=status)
+        rebuild_availability = self._trusted_embedding_rebuild_availability()
         real_send_enabled = bool(self.get_settings().real_send_enabled)
         blocked_for_real_send = bool(status.ready and real_send_enabled and trust["embedding_trust_status"] != "trusted")
         recommended_actions: list[str] = []
@@ -1448,7 +1449,66 @@ class DesktopAppService:
             "trust_reason": str(trust["embedding_trust_reason"]),
             "real_send_enabled": real_send_enabled,
             "blocked_for_real_send": blocked_for_real_send,
+            "trusted_rebuild_available": bool(rebuild_availability["available"]),
+            "trusted_rebuild_provider": rebuild_availability["provider"],
+            "trusted_rebuild_block_reason": rebuild_availability["block_reason"],
             "recommended_actions": recommended_actions,
+        }
+
+    def rebuild_knowledge_with_trusted_embeddings(self, *, acceptance_query: str = "") -> dict[str, Any]:
+        rebuild_availability = self._trusted_embedding_rebuild_availability()
+        if not rebuild_availability["available"]:
+            return {
+                "accepted": False,
+                "status": "blocked",
+                "reason_code": "TRUSTED_EMBEDDING_PROVIDER_UNAVAILABLE",
+                "reason": "trusted embedding provider is not configured for knowledge rebuild",
+                "trusted_rebuild_provider": rebuild_availability["provider"],
+                "trusted_rebuild_block_reason": rebuild_availability["block_reason"],
+                "index_status": self.get_knowledge_status(),
+                "trust_diagnostics": self.get_knowledge_trust_diagnostics(),
+                "acceptance_snapshot": None,
+            }
+
+        index_status = asdict(self.knowledge_importer.rebuild_index())
+        diagnostics = self.get_knowledge_trust_diagnostics()
+        accepted = bool(index_status.get("embedding_trusted")) and diagnostics.get("trust_status") == "trusted"
+        acceptance_snapshot = None
+        normalized_query = str(acceptance_query or "").strip()
+        if accepted and normalized_query:
+            acceptance_snapshot = self.build_knowledge_acceptance_snapshot(normalized_query)
+            diagnostics = self.get_knowledge_trust_diagnostics()
+        return {
+            "accepted": accepted,
+            "status": "rebuilt" if accepted else "untrusted_after_rebuild",
+            "reason_code": "" if accepted else "KNOWLEDGE_REBUILD_NOT_TRUSTED",
+            "reason": "" if accepted else "knowledge index rebuild did not produce trusted embeddings",
+            "trusted_rebuild_provider": rebuild_availability["provider"],
+            "trusted_rebuild_block_reason": "",
+            "index_status": index_status,
+            "trust_diagnostics": diagnostics,
+            "acceptance_snapshot": acceptance_snapshot,
+        }
+
+    def _trusted_embedding_rebuild_availability(self) -> dict[str, Any]:
+        try:
+            info = embedding_provider_info(build_embeddings())
+        except Exception as exc:
+            return {
+                "available": False,
+                "provider": None,
+                "block_reason": str(exc) or "embedding_provider_unavailable",
+            }
+        if info.trust_status != "trusted":
+            return {
+                "available": False,
+                "provider": info.provider,
+                "block_reason": info.trust_reason,
+            }
+        return {
+            "available": True,
+            "provider": info.provider,
+            "block_reason": "",
         }
 
     def build_web_knowledge_from_documents(

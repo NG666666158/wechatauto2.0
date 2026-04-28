@@ -365,6 +365,44 @@
         "title": "ApiResponse[KnowledgeTrustDiagnosticsData]",
         "type": "object"
       },
+      "ApiResponse_KnowledgeTrustedRebuildResultData_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeTrustedRebuildResultData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiErrorPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "default": "",
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ApiResponse[KnowledgeTrustedRebuildResultData]",
+        "type": "object"
+      },
       "ApiResponse_LogsSummaryData_": {
         "properties": {
           "data": {
@@ -2213,9 +2251,101 @@
             "default": "unknown",
             "title": "Trust Status",
             "type": "string"
+          },
+          "trusted_rebuild_available": {
+            "default": false,
+            "title": "Trusted Rebuild Available",
+            "type": "boolean"
+          },
+          "trusted_rebuild_block_reason": {
+            "default": "",
+            "title": "Trusted Rebuild Block Reason",
+            "type": "string"
+          },
+          "trusted_rebuild_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trusted Rebuild Provider"
           }
         },
         "title": "KnowledgeTrustDiagnosticsData",
+        "type": "object"
+      },
+      "KnowledgeTrustedRebuildRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptance_query": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Acceptance Query",
+            "type": "string"
+          }
+        },
+        "title": "KnowledgeTrustedRebuildRequest",
+        "type": "object"
+      },
+      "KnowledgeTrustedRebuildResultData": {
+        "properties": {
+          "acceptance_snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeAcceptanceSnapshotData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accepted": {
+            "default": false,
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "index_status": {
+            "$ref": "#/components/schemas/KnowledgeStatusData"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "default": "",
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "status": {
+            "default": "",
+            "title": "Status",
+            "type": "string"
+          },
+          "trust_diagnostics": {
+            "$ref": "#/components/schemas/KnowledgeTrustDiagnosticsData"
+          },
+          "trusted_rebuild_block_reason": {
+            "default": "",
+            "title": "Trusted Rebuild Block Reason",
+            "type": "string"
+          },
+          "trusted_rebuild_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trusted Rebuild Provider"
+          }
+        },
+        "title": "KnowledgeTrustedRebuildResultData",
         "type": "object"
       },
       "LogsSummaryData": {
@@ -5371,6 +5501,47 @@
           }
         },
         "summary": "Knowledge Trust Diagnostics",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/v1/knowledge/trusted-rebuild": {
+      "post": {
+        "operationId": "rebuild_knowledge_with_trusted_embeddings_api_v1_knowledge_trusted_rebuild_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeTrustedRebuildRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeTrustedRebuildResultData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rebuild Knowledge With Trusted Embeddings",
         "tags": [
           "knowledge"
         ]
