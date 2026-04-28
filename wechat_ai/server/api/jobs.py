@@ -16,6 +16,7 @@ class ReplyApproveRequest(StrictRequestModel):
     draft_reply: str | None = Field(None, max_length=8000)
     reason: str | None = Field(None, max_length=1000)
     reviewed_by: str = Field("operator", max_length=200)
+    send_after_approve: bool = False
 
 
 class ReplyCancelRequest(StrictRequestModel):
@@ -83,6 +84,7 @@ def approve_reply_job(
         draft_reply=payload.draft_reply if payload is not None else None,
         reason=payload.reason if payload is not None else None,
         reviewed_by=payload.reviewed_by if payload is not None else "operator",
+        send_after_approve=payload.send_after_approve if payload is not None else False,
     )
     return success_response(updated, trace_id=request.state.trace_id)
 

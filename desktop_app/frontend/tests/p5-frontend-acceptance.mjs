@@ -78,6 +78,8 @@ const checks = [
         source.includes("listSendAttempts") &&
         source.includes("approveReplyJob") &&
         source.includes("cancelReplyJob") &&
+        source.includes("approve_send") &&
+        source.includes("send_after_approve") &&
         source.includes("ReplyRiskSummary") &&
         source.includes("reason_codes") &&
         source.includes("formatReasonCode") &&
@@ -128,7 +130,8 @@ const checks = [
     run: () => {
       const source = read("app/pending/page.tsx")
       return (
-        source.includes('reason: "manual_approve"') &&
+        source.includes("manual_approve") &&
+        source.includes("manual_approve_and_send") &&
         source.includes('reason: "manual_cancel"') &&
         countOccurrences(source, 'reviewed_by: "operator"') >= 3
       )

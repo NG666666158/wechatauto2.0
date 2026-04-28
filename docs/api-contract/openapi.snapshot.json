@@ -2039,6 +2039,11 @@
             "maxLength": 200,
             "title": "Reviewed By",
             "type": "string"
+          },
+          "send_after_approve": {
+            "default": false,
+            "title": "Send After Approve",
+            "type": "boolean"
           }
         },
         "title": "ReplyApproveRequest",

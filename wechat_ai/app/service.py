@@ -774,99 +774,14 @@ class DesktopAppService:
                 draft_reply=cleaned_text,
                 status="APPROVED",
             )
-            coordinator = SendCoordinator(
-                store=self.runtime_state_store,
-                sender=lambda **kwargs: sender.send_reply(
-                    conversation_id=str(kwargs["conversation_id"]),
-                    text=str(kwargs["text"]),
-                    is_group=bool(kwargs.get("is_group", False)),
-                ),
-                confirmer=(
-                    None
-                    if send_confirmer is None
-                    else lambda **kwargs: send_confirmer.confirm_sent(
-                        conversation_id=str(kwargs["conversation_id"]),
-                        text=str(kwargs["text"]),
-                        is_group=bool(kwargs.get("is_group", False)),
-                        send_result=kwargs.get("send_result") if isinstance(kwargs.get("send_result"), dict) else {},
-                    )
-                ),
-                precheck=lambda **kwargs: {"ok": True},
-                on_uncertain=lambda send_job, result: self.update_conversation_control(
-                    str(send_job.get("conversation_id") or normalized_id),
-                    {"paused": True},
-                ),
-                ui_lock=self.ui_action_lock,
-            )
-            coordinated = coordinator.send_reply(
-                conversation_id=normalized_id,
-                target_title=_conversation_title(normalized_id),
+            return self._send_approved_reply_job(
+                reply_job=reply_job,
                 text=cleaned_text,
-                is_group=is_group,
-                reply_job_id=str(reply_job["reply_job_id"]),
+                sender=sender,
+                send_confirmer=send_confirmer,
+                skip_safety=False,
+                action="send_reply",
             )
-            normalized_send_result = coordinated.get("send_result") if isinstance(coordinated.get("send_result"), dict) else {}
-            if coordinated["status"] == "send_failed":
-                return {
-                    "status": "failed",
-                    "action": "send_reply",
-                    "allowed": True,
-                    "sent": False,
-                    "conversation_id": conversation_id,
-                    "text": cleaned_text,
-                    "reason_code": str(coordinated.get("reason_code") or "SEND_FAILED"),
-                    "reason": str(coordinated.get("reason") or ""),
-                    "send_job_id": coordinated.get("send_job_id"),
-                }
-            if coordinated["status"] == "send_uncertain":
-                return {
-                    "status": "send_uncertain",
-                    "action": "send_reply",
-                    "allowed": True,
-                    "sent": True,
-                    "confirmed": False,
-                    "conversation_id": conversation_id,
-                    "text": cleaned_text,
-                    "reason_code": str(coordinated.get("reason_code") or "SEND_NOT_CONFIRMED"),
-                    "reason": str(coordinated.get("reason") or ""),
-                    "send_result": normalized_send_result,
-                    "send_job_id": coordinated.get("send_job_id"),
-                }
-            if coordinated["status"] == "already_sent":
-                return {
-                    "status": "already_sent",
-                    "action": "send_reply",
-                    "allowed": True,
-                    "sent": False,
-                    "confirmed": True,
-                    "conversation_id": conversation_id,
-                    "text": cleaned_text,
-                    "reason_code": "ALREADY_SENT",
-                    "reason": "",
-                    "send_job_id": coordinated.get("send_job_id"),
-                }
-            self.record_conversation_message(
-                normalized_id,
-                sender="assistant",
-                text=cleaned_text,
-                direction="outgoing",
-            )
-            response = {
-                "status": "sent",
-                "action": "send_reply",
-                "allowed": True,
-                "sent": True,
-                "conversation_id": conversation_id,
-                "text": cleaned_text,
-                "reason_code": "",
-                "reason": "",
-                "send_result": normalized_send_result,
-            }
-            if send_confirmer is not None:
-                response["confirmed"] = True
-            if coordinated.get("send_job_id"):
-                response["send_job_id"] = coordinated["send_job_id"]
-            return response
         return {
             "status": "not_implemented",
             "action": "send_reply",
@@ -876,6 +791,134 @@ class DesktopAppService:
             "reason_code": "",
             "reason": "",
         }
+
+    def _send_approved_reply_job(
+        self,
+        *,
+        reply_job: Mapping[str, object],
+        text: str,
+        sender: object,
+        send_confirmer: object | None = None,
+        skip_safety: bool = False,
+        action: str = "approve_reply_job",
+    ) -> dict[str, object]:
+        normalized_id = str(reply_job.get("conversation_id") or "").strip()
+        cleaned_text = str(text).strip()
+        preflight = self.validate_send_reply(normalized_id, cleaned_text, skip_safety=skip_safety)
+        if not preflight["allowed"]:
+            return {
+                "status": "blocked",
+                "action": action,
+                "allowed": False,
+                "conversation_id": normalized_id,
+                "text": cleaned_text,
+                "reason_code": str(preflight["reason_code"]),
+                "reason": str(preflight["reason"]),
+            }
+        if self.runtime_state_store.conversation_has_unresolved_uncertain_send(normalized_id):
+            return {
+                "status": "blocked",
+                "action": action,
+                "allowed": False,
+                "conversation_id": normalized_id,
+                "text": cleaned_text,
+                "reason_code": "UNRESOLVED_SEND_UNCERTAIN",
+                "reason": "conversation has an unresolved SEND_UNCERTAIN send job",
+            }
+        is_group = _conversation_chat_type(normalized_id) == "group"
+        coordinator = SendCoordinator(
+            store=self.runtime_state_store,
+            sender=lambda **kwargs: sender.send_reply(
+                conversation_id=str(kwargs["conversation_id"]),
+                text=str(kwargs["text"]),
+                is_group=bool(kwargs.get("is_group", False)),
+            ),
+            confirmer=(
+                None
+                if send_confirmer is None
+                else lambda **kwargs: send_confirmer.confirm_sent(
+                    conversation_id=str(kwargs["conversation_id"]),
+                    text=str(kwargs["text"]),
+                    is_group=bool(kwargs.get("is_group", False)),
+                    send_result=kwargs.get("send_result") if isinstance(kwargs.get("send_result"), dict) else {},
+                )
+            ),
+            precheck=lambda **kwargs: {"ok": True},
+            on_uncertain=lambda send_job, result: self.update_conversation_control(
+                str(send_job.get("conversation_id") or normalized_id),
+                {"paused": True},
+            ),
+            ui_lock=self.ui_action_lock,
+        )
+        coordinated = coordinator.send_reply(
+            conversation_id=normalized_id,
+            target_title=_conversation_title(normalized_id),
+            text=cleaned_text,
+            is_group=is_group,
+            reply_job_id=str(reply_job.get("reply_job_id") or ""),
+        )
+        normalized_send_result = coordinated.get("send_result") if isinstance(coordinated.get("send_result"), dict) else {}
+        if coordinated["status"] == "send_failed":
+            return {
+                "status": "failed",
+                "action": action,
+                "allowed": True,
+                "sent": False,
+                "conversation_id": normalized_id,
+                "text": cleaned_text,
+                "reason_code": str(coordinated.get("reason_code") or "SEND_FAILED"),
+                "reason": str(coordinated.get("reason") or ""),
+                "send_job_id": coordinated.get("send_job_id"),
+            }
+        if coordinated["status"] == "send_uncertain":
+            return {
+                "status": "send_uncertain",
+                "action": action,
+                "allowed": True,
+                "sent": True,
+                "confirmed": False,
+                "conversation_id": normalized_id,
+                "text": cleaned_text,
+                "reason_code": str(coordinated.get("reason_code") or "SEND_NOT_CONFIRMED"),
+                "reason": str(coordinated.get("reason") or ""),
+                "send_result": normalized_send_result,
+                "send_job_id": coordinated.get("send_job_id"),
+            }
+        if coordinated["status"] == "already_sent":
+            return {
+                "status": "already_sent",
+                "action": action,
+                "allowed": True,
+                "sent": False,
+                "confirmed": True,
+                "conversation_id": normalized_id,
+                "text": cleaned_text,
+                "reason_code": "ALREADY_SENT",
+                "reason": "",
+                "send_job_id": coordinated.get("send_job_id"),
+            }
+        self.record_conversation_message(
+            normalized_id,
+            sender="assistant",
+            text=cleaned_text,
+            direction="outgoing",
+        )
+        response = {
+            "status": "sent",
+            "action": action,
+            "allowed": True,
+            "sent": True,
+            "conversation_id": normalized_id,
+            "text": cleaned_text,
+            "reason_code": "",
+            "reason": "",
+            "send_result": normalized_send_result,
+        }
+        if send_confirmer is not None:
+            response["confirmed"] = True
+        if coordinated.get("send_job_id"):
+            response["send_job_id"] = coordinated["send_job_id"]
+        return response
 
     def list_reply_jobs(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, object]]:
         return self.runtime_state_store.list_reply_jobs(status=status, limit=limit)
@@ -887,14 +930,48 @@ class DesktopAppService:
         draft_reply: str | None = None,
         reason: str | None = None,
         reviewed_by: str = "operator",
+        send_after_approve: bool = False,
     ) -> dict[str, object]:
-        return self.runtime_state_store.mark_reply_job(
+        updated = self.runtime_state_store.mark_reply_job(
             reply_job_id,
             status="APPROVED",
             draft_reply=draft_reply,
             review_reason=reason,
             reviewed_by=reviewed_by,
         )
+        if not send_after_approve:
+            return updated
+        text = str(updated.get("draft_reply") or "").strip()
+        settings = self.get_settings()
+        sender = self.reply_sender
+        if sender is None and settings.real_send_enabled:
+            sender = PyWeixinReplySender()
+        if sender is None:
+            return {
+                **updated,
+                "send_status": "not_implemented",
+                "send_result": {
+                    "status": "not_implemented",
+                    "action": "approve_reply_job",
+                    "allowed": True,
+                    "conversation_id": updated.get("conversation_id"),
+                    "text": text,
+                    "reason_code": "",
+                    "reason": "",
+                },
+            }
+        send_confirmer = self.send_confirmer
+        if send_confirmer is None and settings.real_send_enabled:
+            send_confirmer = PyWeixinVisualSendConfirmer(probe=self._get_wechat_window_probe())
+        send_result = self._send_approved_reply_job(
+            reply_job=updated,
+            text=text,
+            sender=sender,
+            send_confirmer=send_confirmer,
+            skip_safety=True,
+            action="approve_reply_job",
+        )
+        return {**updated, "send_status": send_result.get("status", ""), "send_result": send_result}
 
     def cancel_reply_job(
         self,
@@ -940,7 +1017,7 @@ class DesktopAppService:
                 self.update_conversation_control(conversation_id, {"paused": False})
         return updated
 
-    def validate_send_reply(self, conversation_id: str, text: str) -> dict[str, object]:
+    def validate_send_reply(self, conversation_id: str, text: str, *, skip_safety: bool = False) -> dict[str, object]:
         normalized_id = str(conversation_id).strip()
         if not str(text).strip():
             return _blocked_send("EMPTY_TEXT", "回复内容不能为空。")
@@ -951,12 +1028,13 @@ class DesktopAppService:
             return _blocked_send("CONVERSATION_PAUSED", "该会话已暂停自动回复。")
         if control["blacklisted"]:
             return _blocked_send("BLACKLISTED", "该会话在黑名单中。")
-        safety = self.safety_policy_engine.assess_output(str(text))
-        if not safety.allowed_to_send:
-            return _blocked_send(
-                "SAFETY_REVIEW_REQUIRED",
-                ",".join(safety.reason_codes) or "SAFETY_REVIEW_REQUIRED",
-            )
+        if not skip_safety:
+            safety = self.safety_policy_engine.assess_output(str(text))
+            if not safety.allowed_to_send:
+                return _blocked_send(
+                    "SAFETY_REVIEW_REQUIRED",
+                    ",".join(safety.reason_codes) or "SAFETY_REVIEW_REQUIRED",
+                )
         return {
             "allowed": True,
             "reason_code": "",

@@ -254,6 +254,8 @@ export type ReplyJob = {
   review_reason?: string | null
   reviewed_by?: string | null
   reviewed_at?: string | null
+  send_status?: string
+  send_result?: Record<string, unknown>
 }
 
 export type SendConfirmationResult = Record<string, unknown> & {
@@ -298,6 +300,7 @@ export type ReplyJobApproveBody = {
   draft_reply?: string
   reason?: string
   reviewed_by?: string
+  send_after_approve?: boolean
 }
 
 export type ReplyJobCancelBody = {

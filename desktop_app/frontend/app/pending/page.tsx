@@ -15,7 +15,7 @@ type ActionTarget = {
 
 type ReplyActionTarget = {
   replyJobId: string
-  action: "approve" | "cancel"
+  action: "approve" | "approve_send" | "cancel"
   draftReply?: string | null
 }
 
@@ -111,11 +111,12 @@ export default function PendingPage() {
     setNotice("")
     try {
       const response =
-        action === "approve"
+        action === "approve" || action === "approve_send"
           ? await apiClient.approveReplyJob(replyJobId, {
               ...(draftReply ? { draft_reply: draftReply } : {}),
-              reason: "manual_approve",
+              reason: action === "approve_send" ? "manual_approve_and_send" : "manual_approve",
               reviewed_by: "operator",
+              send_after_approve: action === "approve_send",
             })
           : await apiClient.cancelReplyJob(replyJobId, { reason: "manual_cancel", reviewed_by: "operator" })
       if (!response.success) {
@@ -123,6 +124,10 @@ export default function PendingPage() {
         return
       }
       await loadPending({ quiet: true })
+      if (action === "approve_send") {
+        setNotice(`已批准并发送 ReplyJob ${replyJobId}`)
+        return
+      }
       setNotice(action === "approve" ? `已批准 ReplyJob ${replyJobId}` : `已取消 ReplyJob ${replyJobId}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "无法更新 ReplyJob")
@@ -408,9 +413,10 @@ function ReplyJobActions({
   onReplyAction: (target: ReplyActionTarget) => void
 }) {
   const approveKey = `reply:approve:${job.reply_job_id}`
+  const approveSendKey = `reply:approve_send:${job.reply_job_id}`
   const cancelKey = `reply:cancel:${job.reply_job_id}`
   return (
-    <div className="mt-4 grid grid-cols-2 gap-2">
+    <div className="mt-4 grid grid-cols-3 gap-2">
       <button
         disabled={busyTarget === approveKey}
         onClick={() => onReplyAction({ replyJobId: job.reply_job_id, action: "approve", draftReply: job.draft_reply })}
@@ -418,6 +424,14 @@ function ReplyJobActions({
       >
         <Check className="h-3.5 w-3.5" />
         {busyTarget === approveKey ? "处理中" : "批准"}
+      </button>
+      <button
+        disabled={busyTarget === approveSendKey}
+        onClick={() => onReplyAction({ replyJobId: job.reply_job_id, action: "approve_send", draftReply: job.draft_reply })}
+        className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-sky-500 px-3 text-xs font-medium text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+      >
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        {busyTarget === approveSendKey ? "处理中" : "批准并发送"}
       </button>
       <button
         disabled={busyTarget === cancelKey}

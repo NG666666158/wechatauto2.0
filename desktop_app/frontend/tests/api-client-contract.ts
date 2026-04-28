@@ -47,6 +47,7 @@ async function assertApiClientContract() {
     draft_reply: "manual approved reply",
     reason: "manual_approve",
     reviewed_by: "operator",
+    send_after_approve: true,
   })
   const cancelledReplyJob: ApiResponse<ReplyJob> = await apiClient.cancelReplyJob("reply_001", {
     reason: "manual_cancel",

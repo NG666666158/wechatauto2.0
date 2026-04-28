@@ -200,12 +200,14 @@ class FakeDesktopService:
         draft_reply: str | None = None,
         reason: str | None = None,
         reviewed_by: str = "operator",
+        send_after_approve: bool = False,
     ) -> dict[str, object]:
         self.last_approve_request = {
             "reply_job_id": reply_job_id,
             "draft_reply": draft_reply,
             "reason": reason,
             "reviewed_by": reviewed_by,
+            "send_after_approve": send_after_approve,
         }
         for job in self.reply_jobs:
             if job["reply_job_id"] == reply_job_id:
@@ -214,6 +216,9 @@ class FakeDesktopService:
                     job["draft_reply"] = draft_reply
                 job["review_reason"] = reason or ""
                 job["reviewed_by"] = reviewed_by
+                if send_after_approve:
+                    job["send_status"] = "sent"
+                    job["send_result"] = {"status": "sent", "send_job_id": "send_from_reply_001"}
                 return dict(job)
         raise KeyError(reply_job_id)
 
@@ -1219,7 +1224,12 @@ def test_runtime_jobs_manual_actions_update_reply_and_uncertain_send_jobs() -> N
 
     approved = client.post(
         "/api/v1/jobs/reply/reply_001/approve",
-        json={"draft_reply": "new draft", "reason": "approved after review", "reviewed_by": "lead-operator"},
+        json={
+            "draft_reply": "new draft",
+            "reason": "approved after review",
+            "reviewed_by": "lead-operator",
+            "send_after_approve": True,
+        },
         headers={"x-trace-id": "trace-approve"},
     )
     cancelled = client.post(
@@ -1240,11 +1250,13 @@ def test_runtime_jobs_manual_actions_update_reply_and_uncertain_send_jobs() -> N
     assert approved.json()["data"]["draft_reply"] == "new draft"
     assert approved.json()["data"]["review_reason"] == "approved after review"
     assert approved.json()["data"]["reviewed_by"] == "lead-operator"
+    assert approved.json()["data"]["send_status"] == "sent"
     assert service.last_approve_request == {
         "reply_job_id": "reply_001",
         "draft_reply": "new draft",
         "reason": "approved after review",
         "reviewed_by": "lead-operator",
+        "send_after_approve": True,
     }
     assert cancelled.json()["data"]["status"] == "CANCELLED"
     assert cancelled.json()["data"]["review_reason"] == "operator cancelled"

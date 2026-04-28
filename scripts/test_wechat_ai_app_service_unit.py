@@ -454,6 +454,43 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_approve_reply_job_can_send_approved_draft_through_coordinator(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_approve_send")
+        try:
+            sender = FakeReplySender()
+            confirmer = FakeSendConfirmer(confirmed=True)
+            service = DesktopAppService(data_root=temp_dir, reply_sender=sender, send_confirmer=confirmer)
+            reply = service.runtime_state_store.create_reply_job(
+                conversation_id="friend:alice",
+                trigger_event_ids=["event-approve-send"],
+                input_text="hello",
+                draft_reply="old draft",
+                status="PENDING_REVIEW",
+                need_human_review=True,
+            )
+
+            approved = service.approve_reply_job(
+                reply["reply_job_id"],
+                draft_reply="退款方案已人工确认",
+                reason="approved and send",
+                reviewed_by="qa-operator",
+                send_after_approve=True,
+            )
+            send_jobs = service.list_send_jobs(status="SENT_CONFIRMED")
+
+            self.assertEqual(approved["status"], "APPROVED")
+            self.assertEqual(approved["draft_reply"], "退款方案已人工确认")
+            self.assertEqual(approved["send_status"], "sent")
+            self.assertTrue(approved["send_result"]["confirmed"])
+            self.assertEqual(sender.sent, [{"conversation_id": "friend:alice", "text": "退款方案已人工确认", "is_group": False}])
+            self.assertEqual(confirmer.calls[0]["conversation_id"], "friend:alice")
+            self.assertEqual(send_jobs[0]["reply_job_id"], reply["reply_job_id"])
+            self.assertEqual(send_jobs[0]["content"], "退款方案已人工确认")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_resolve_uncertain_send_job_updates_runtime_state(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 
