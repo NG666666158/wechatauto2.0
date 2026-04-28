@@ -27,6 +27,7 @@ class SendResolveRequest(StrictRequestModel):
     resolution: Literal["confirmed", "failed"]
     reason: str | None = Field(None, max_length=1000)
     reviewed_by: str = Field("operator", max_length=200)
+    unpause_conversation: bool = False
 
 
 def _service(request: Request):
@@ -112,6 +113,7 @@ def resolve_uncertain_send_job(
             resolution=payload.resolution,
             reason=payload.reason,
             reviewed_by=payload.reviewed_by,
+            unpause_conversation=payload.unpause_conversation,
         )
     except ValueError as exc:
         raise ApiError(

@@ -2549,6 +2549,11 @@
             "maxLength": 200,
             "title": "Reviewed By",
             "type": "string"
+          },
+          "unpause_conversation": {
+            "default": false,
+            "title": "Unpause Conversation",
+            "type": "boolean"
           }
         },
         "required": [

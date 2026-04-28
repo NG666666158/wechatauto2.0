@@ -79,6 +79,8 @@ const checks = [
         source.includes("approveReplyJob") &&
         source.includes("cancelReplyJob") &&
         source.includes("resolveSendJob") &&
+        source.includes("unpauseConversation") &&
+        source.includes("unpause_conversation") &&
         source.includes("批准") &&
         source.includes("取消") &&
         source.includes("标记已确认") &&

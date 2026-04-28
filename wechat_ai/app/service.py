@@ -926,13 +926,19 @@ class DesktopAppService:
         resolution: str,
         reason: str | None = None,
         reviewed_by: str = "operator",
+        unpause_conversation: bool = False,
     ) -> dict[str, object]:
-        return self.runtime_state_store.resolve_uncertain_send_job(
+        updated = self.runtime_state_store.resolve_uncertain_send_job(
             send_job_id,
             resolution=resolution,
             reason=reason,
             reviewed_by=reviewed_by,
         )
+        if unpause_conversation and updated.get("status") == "SENT_CONFIRMED":
+            conversation_id = str(updated.get("conversation_id") or "").strip()
+            if conversation_id:
+                self.update_conversation_control(conversation_id, {"paused": False})
+        return updated
 
     def validate_send_reply(self, conversation_id: str, text: str) -> dict[str, object]:
         normalized_id = str(conversation_id).strip()

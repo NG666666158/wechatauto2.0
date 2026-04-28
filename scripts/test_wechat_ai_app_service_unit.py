@@ -484,6 +484,34 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_resolve_uncertain_send_job_can_restore_paused_conversation(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_resolve_restore")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+            send = service.runtime_state_store.create_send_job(
+                reply_job_id="reply-restore",
+                conversation_id="friend:alice",
+                target_title="Alice",
+                content="hi",
+                status="SEND_UNCERTAIN",
+            )
+            service.update_conversation_control("friend:alice", {"paused": True})
+
+            restored = service.resolve_uncertain_send_job(
+                send["send_job_id"],
+                resolution="confirmed",
+                reason="operator confirmed visible send",
+                unpause_conversation=True,
+            )
+            control = service.get_conversation_control("friend:alice")
+
+            self.assertEqual(restored["status"], "SENT_CONFIRMED")
+            self.assertIs(control["paused"], False)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_send_reply_calls_sender_and_records_outgoing_message(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 

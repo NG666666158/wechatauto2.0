@@ -70,6 +70,7 @@ async function assertApiClientContract() {
     resolution: "confirmed",
     reason: "manual confirmation",
     reviewed_by: "operator",
+    unpause_conversation: true,
   })
   const suggestion: ApiResponse<ReplySuggestion> = await apiClient.suggestReply("friend:zhang", "请介绍一下试用政策")
   const sent: ApiResponse<SendReplyResult> = await apiClient.sendConversationReply("friend:zhang", "您好，稍后为您介绍。")

@@ -244,7 +244,15 @@ class FakeDesktopService:
         resolution: str,
         reason: str | None = None,
         reviewed_by: str = "operator",
+        unpause_conversation: bool = False,
     ) -> dict[str, object]:
+        self.last_resolve_request = {
+            "send_job_id": send_job_id,
+            "resolution": resolution,
+            "reason": reason,
+            "reviewed_by": reviewed_by,
+            "unpause_conversation": unpause_conversation,
+        }
         for job in self.uncertain_send_jobs:
             if job["send_job_id"] == send_job_id:
                 job["status"] = "SENT_CONFIRMED" if resolution == "confirmed" else "SEND_FAILED"
@@ -1221,7 +1229,7 @@ def test_runtime_jobs_manual_actions_update_reply_and_uncertain_send_jobs() -> N
     )
     resolved = client.post(
         "/api/v1/jobs/send/send_001/resolve",
-        json={"resolution": "confirmed", "reason": "visible in chat"},
+        json={"resolution": "confirmed", "reason": "visible in chat", "unpause_conversation": True},
         headers={"x-trace-id": "trace-resolve"},
     )
 
@@ -1249,6 +1257,13 @@ def test_runtime_jobs_manual_actions_update_reply_and_uncertain_send_jobs() -> N
     assert resolved.json()["data"]["status"] == "SENT_CONFIRMED"
     assert resolved.json()["data"]["confirmation_result"]["source"] == "manual"
     assert resolved.json()["data"]["confirmation_result"]["resolution"] == "confirmed"
+    assert service.last_resolve_request == {
+        "send_job_id": "send_001",
+        "resolution": "confirmed",
+        "reason": "visible in chat",
+        "reviewed_by": "operator",
+        "unpause_conversation": True,
+    }
 
 
 def test_recent_logs_can_filter_by_event_type_trace_id_and_errors() -> None:

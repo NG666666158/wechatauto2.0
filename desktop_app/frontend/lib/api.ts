@@ -308,6 +308,7 @@ export type SendJobResolveBody = {
   resolution: "confirmed" | "failed"
   reason?: string
   reviewed_by?: string
+  unpause_conversation?: boolean
 }
 
 export type SendReplyResult = {

@@ -22,6 +22,7 @@ type ReplyActionTarget = {
 type SendActionTarget = {
   sendJobId: string
   resolution: "confirmed" | "failed"
+  unpauseConversation?: boolean
 }
 
 export default function PendingPage() {
@@ -130,8 +131,8 @@ export default function PendingPage() {
     }
   }
 
-  async function resolveSendJob({ sendJobId, resolution }: SendActionTarget) {
-    const targetKey = `send:${resolution}:${sendJobId}`
+  async function resolveSendJob({ sendJobId, resolution, unpauseConversation = false }: SendActionTarget) {
+    const targetKey = `send:${resolution}:${unpauseConversation ? "unpause" : "keep"}:${sendJobId}`
     setBusyTarget(targetKey)
     setError("")
     setNotice("")
@@ -140,13 +141,18 @@ export default function PendingPage() {
         resolution,
         reason: resolution === "confirmed" ? "manual_confirmed" : "manual_failed",
         reviewed_by: "operator",
+        unpause_conversation: unpauseConversation,
       })
       if (!response.success) {
         setError(response.error ? `${response.error.code}: ${response.error.message}` : "SendJob 操作失败")
         return
       }
       await loadPending({ quiet: true })
-      setNotice(resolution === "confirmed" ? `已标记 SendJob ${sendJobId} 为已确认` : `已标记 SendJob ${sendJobId} 为失败`)
+      setNotice(
+        resolution === "confirmed"
+          ? `已标记 SendJob ${sendJobId} 为已确认${unpauseConversation ? "，并恢复会话" : ""}`
+          : `已标记 SendJob ${sendJobId} 为失败`,
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : "无法更新 SendJob")
     } finally {
@@ -406,10 +412,11 @@ function SendJobActions({
   busyTarget: string
   onResolve: (target: SendActionTarget) => void
 }) {
-  const confirmedKey = `send:confirmed:${job.send_job_id}`
-  const failedKey = `send:failed:${job.send_job_id}`
+  const confirmedKey = `send:confirmed:keep:${job.send_job_id}`
+  const confirmedRestoreKey = `send:confirmed:unpause:${job.send_job_id}`
+  const failedKey = `send:failed:keep:${job.send_job_id}`
   return (
-    <div className="mt-4 grid grid-cols-2 gap-2">
+    <div className="mt-4 grid grid-cols-3 gap-2">
       <button
         disabled={busyTarget === confirmedKey}
         onClick={() => onResolve({ sendJobId: job.send_job_id, resolution: "confirmed" })}
@@ -417,6 +424,16 @@ function SendJobActions({
       >
         <CheckCircle2 className="h-3.5 w-3.5" />
         {busyTarget === confirmedKey ? "处理中" : "标记已确认"}
+      </button>
+      <button
+        disabled={busyTarget === confirmedRestoreKey}
+        onClick={() =>
+          onResolve({ sendJobId: job.send_job_id, resolution: "confirmed", unpauseConversation: true })
+        }
+        className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-sky-500 px-3 text-xs font-medium text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+      >
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        {busyTarget === confirmedRestoreKey ? "处理中" : "确认并恢复"}
       </button>
       <button
         disabled={busyTarget === failedKey}
