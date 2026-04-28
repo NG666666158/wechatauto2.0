@@ -365,6 +365,38 @@ class FakeDesktopService:
     def list_safety_policy_audit(self, *, limit: int = 20) -> list[dict[str, object]]:
         return self.safety_policy_audit[:limit]
 
+    def export_safety_policy(self) -> dict[str, object]:
+        return dict(self.settings["safety_policy"])  # type: ignore[arg-type]
+
+    def import_safety_policy(
+        self,
+        policy: dict[str, object],
+        *,
+        operator: str = "operator",
+        source: str = "api",
+    ) -> dict[str, object]:
+        self.update_settings({"safety_policy": policy}, operator=operator, source=source)
+        return dict(self.settings["safety_policy"])  # type: ignore[arg-type]
+
+    def restore_default_safety_policy(
+        self,
+        *,
+        operator: str = "operator",
+        source: str = "api",
+    ) -> dict[str, object]:
+        policy = {
+            "input_rules": [],
+            "output_rules": [],
+            "rule_groups": {"prompt_injection": True, "sensitive_information": True, "business_risk": True},
+        }
+        self.update_settings(
+            {"safety_policy": {"reset_to_defaults": True, **policy}},
+            operator=operator,
+            source=source,
+        )
+        self.settings["safety_policy"] = policy
+        return dict(policy)
+
     def get_tray_state(self) -> dict[str, object]:
         return {
             "tooltip": f"WeChat AI: {self.daemon_state['state']}",
@@ -1296,6 +1328,32 @@ def test_settings_endpoint_exposes_safety_policy_audit_records() -> None:
     assert audit.json()["data"][0]["source"] == "settings.patch"
 
 
+def test_settings_endpoint_imports_exports_and_restores_safety_policy() -> None:
+    from wechat_ai.server import create_app
+
+    service = FakeDesktopService()
+    client = TestClient(create_app(desktop_service=service))
+
+    exported = client.get("/api/v1/settings/safety-policy/export")
+    policy = exported.json()["data"]
+    policy["rule_groups"] = {"business_risk": False}
+    imported = client.post("/api/v1/settings/safety-policy/import", json={"safety_policy": policy})
+    restored = client.post("/api/v1/settings/safety-policy/restore-defaults")
+    audit = client.get("/api/v1/settings/safety-policy/audit?limit=5").json()
+
+    assert exported.status_code == 200
+    assert exported.json()["success"] is True
+    assert imported.status_code == 200
+    assert imported.json()["success"] is True
+    assert imported.json()["data"]["rule_groups"]["business_risk"] is False
+    assert restored.status_code == 200
+    assert restored.json()["success"] is True
+    assert restored.json()["data"]["rule_groups"]["business_risk"] is True
+    assert audit["data"][0]["action"] == "reset_to_defaults"
+    assert audit["data"][0]["source"] == "settings.safety_policy.restore"
+    assert audit["data"][1]["source"] == "settings.safety_policy.import"
+
+
 def test_frontend_customer_identity_and_knowledge_endpoints_are_available() -> None:
     from wechat_ai.server import create_app
 
@@ -1563,6 +1621,7 @@ def main() -> None:
     test_settings_endpoint_round_trips_safety_policy()
     test_settings_endpoint_accepts_safety_rule_group_and_reset_patch()
     test_settings_endpoint_exposes_safety_policy_audit_records()
+    test_settings_endpoint_imports_exports_and_restores_safety_policy()
     test_frontend_customer_identity_and_knowledge_endpoints_are_available()
     test_message_page_conversation_and_suggestion_endpoints_are_available()
     test_frontend_ops_privacy_and_environment_endpoints_are_available()

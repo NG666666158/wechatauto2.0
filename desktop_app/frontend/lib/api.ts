@@ -202,6 +202,10 @@ export type SafetyPolicyPatch = Partial<SafetyPolicyConfig> & {
   reset_to_defaults?: boolean
 }
 
+export type SafetyPolicyImportBody = {
+  safety_policy: SafetyPolicyPatch
+}
+
 export type SafetyPolicyAuditRecord = {
   timestamp: string
   action: string
@@ -494,6 +498,9 @@ export const apiClient = {
   getSettings: () => request<Settings>("/settings"),
   updateSettings: (patchBody: SettingsPatch) => patch<Settings>("/settings", patchBody),
   getSafetyPolicyAudit: (limit = 20) => request<SafetyPolicyAuditRecord[]>(withQuery("/settings/safety-policy/audit", { limit })),
+  exportSafetyPolicy: () => request<SafetyPolicyConfig>("/settings/safety-policy/export"),
+  importSafetyPolicy: (body: SafetyPolicyImportBody) => post<SafetyPolicyConfig>("/settings/safety-policy/import", body),
+  restoreDefaultSafetyPolicy: () => post<SafetyPolicyConfig>("/settings/safety-policy/restore-defaults"),
   getPrivacyPolicy: () => request<PrivacyPolicy>("/privacy/policy"),
   updatePrivacyPolicy: (patchBody: PrivacyPolicyPatch) => patch<PrivacyPolicy>("/privacy/policy", patchBody),
   listConversations: () => request<ConversationListItem[]>("/conversations"),

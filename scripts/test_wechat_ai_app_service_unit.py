@@ -410,6 +410,52 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_safety_policy_import_export_and_restore_recovery(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_safety_policy_recovery")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+
+            exported = service.export_safety_policy()
+            exported["rule_groups"]["business_risk"] = False
+            imported = service.import_safety_policy(
+                exported,
+                operator="alice",
+                source="settings-page-import",
+            )
+            restored = service.restore_default_safety_policy(
+                operator="bob",
+                source="settings-page-restore",
+            )
+            records = service.list_safety_policy_audit(limit=5)
+
+            self.assertFalse(imported["rule_groups"]["business_risk"])
+            self.assertTrue(restored["rule_groups"]["business_risk"])
+            self.assertEqual(records[0]["action"], "reset_to_defaults")
+            self.assertEqual(records[0]["operator"], "bob")
+            self.assertEqual(records[0]["source"], "settings-page-restore")
+            self.assertEqual(records[1]["action"], "rule_groups_updated")
+            self.assertEqual(records[1]["operator"], "alice")
+            self.assertEqual(records[1]["source"], "settings-page-import")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_safety_policy_import_rejects_non_object_payload(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_safety_policy_import_invalid")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+
+            with self.assertRaises(ValueError):
+                service.import_safety_policy("not-a-policy")  # type: ignore[arg-type]
+
+            self.assertTrue(service.export_safety_policy()["rule_groups"]["business_risk"])
+            self.assertEqual(service.list_safety_policy_audit(limit=5), [])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_updated_safety_policy_affects_suggest_without_restart(self) -> None:
         from dataclasses import asdict, replace
 

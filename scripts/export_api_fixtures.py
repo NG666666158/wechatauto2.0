@@ -44,6 +44,8 @@ def build_api_fixtures() -> dict[str, dict[str, object]]:
         PrivacyPolicyData,
         ReplySuggestionData,
         RuntimeStatusData,
+        SafetyPolicyAuditRecordData,
+        SafetyPolicyConfigData,
         SelfIdentityData,
         SendReplyResultData,
         SettingsData,
@@ -280,6 +282,39 @@ def build_api_fixtures() -> dict[str, dict[str, object]]:
             trace_id="fixture-knowledge-web-build",
         ),
         "settings/settings.get.json": success_response(settings.model_dump(mode="json"), trace_id="fixture-settings-get"),
+        "settings/safety-policy.export.json": success_response(
+            SafetyPolicyConfigData.model_validate(settings.safety_policy).model_dump(mode="json"),
+            trace_id="fixture-settings-safety-policy-export",
+        ),
+        "settings/safety-policy.import.json": success_response(
+            SafetyPolicyConfigData.model_validate(settings.safety_policy).model_dump(mode="json"),
+            trace_id="fixture-settings-safety-policy-import",
+        ),
+        "settings/safety-policy.restore-defaults.json": success_response(
+            SafetyPolicyConfigData.model_validate(settings.safety_policy).model_dump(mode="json"),
+            trace_id="fixture-settings-safety-policy-restore",
+        ),
+        "settings/safety-policy.audit.json": success_response(
+            [
+                SafetyPolicyAuditRecordData(
+                    timestamp="2026-04-25T09:45:00Z",
+                    action="reset_to_defaults",
+                    changed_rule_groups={},
+                    reset_to_defaults=True,
+                    operator="api",
+                    source="settings.safety_policy.restore",
+                ).model_dump(mode="json"),
+                SafetyPolicyAuditRecordData(
+                    timestamp="2026-04-25T09:44:00Z",
+                    action="rule_groups_updated",
+                    changed_rule_groups={"business_risk": False},
+                    reset_to_defaults=False,
+                    operator="api",
+                    source="settings.safety_policy.import",
+                ).model_dump(mode="json"),
+            ],
+            trace_id="fixture-settings-safety-policy-audit",
+        ),
         "settings/privacy.policy.json": success_response(
             PrivacyPolicyData(
                 redact_sensitive_logs=True,

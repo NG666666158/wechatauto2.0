@@ -593,6 +593,44 @@
         "title": "ApiResponse[RuntimeStatusData]",
         "type": "object"
       },
+      "ApiResponse_SafetyPolicyConfigData_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SafetyPolicyConfigData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiErrorPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "default": "",
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ApiResponse[SafetyPolicyConfigData]",
+        "type": "object"
+      },
       "ApiResponse_SelfIdentityData_": {
         "properties": {
           "data": {
@@ -2717,6 +2755,19 @@
           }
         },
         "title": "SafetyPolicyConfigData",
+        "type": "object"
+      },
+      "SafetyPolicyImportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "safety_policy": {
+            "$ref": "#/components/schemas/SafetyPolicyPatchRequest"
+          }
+        },
+        "required": [
+          "safety_policy"
+        ],
+        "title": "SafetyPolicyImportRequest",
         "type": "object"
       },
       "SafetyPolicyPatchRequest": {
@@ -5689,6 +5740,89 @@
           }
         },
         "summary": "List Safety Policy Audit",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/safety-policy/export": {
+      "get": {
+        "operationId": "export_safety_policy_api_v1_settings_safety_policy_export_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SafetyPolicyConfigData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Export Safety Policy",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/safety-policy/import": {
+      "post": {
+        "operationId": "import_safety_policy_api_v1_settings_safety_policy_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SafetyPolicyImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SafetyPolicyConfigData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Safety Policy",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/safety-policy/restore-defaults": {
+      "post": {
+        "operationId": "restore_default_safety_policy_api_v1_settings_safety_policy_restore_defaults_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SafetyPolicyConfigData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Restore Default Safety Policy",
         "tags": [
           "settings"
         ]

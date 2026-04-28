@@ -351,6 +351,41 @@ class DesktopAppService:
     def list_safety_policy_audit(self, *, limit: int = 20) -> list[dict[str, Any]]:
         return self.safety_policy_audit.list_recent(limit=limit)
 
+    def export_safety_policy(self) -> dict[str, Any]:
+        return asdict(self.get_settings().safety_policy)
+
+    def import_safety_policy(
+        self,
+        policy: Mapping[str, object],
+        *,
+        operator: str = "system",
+        source: str = "settings.safety_policy.import",
+    ) -> dict[str, Any]:
+        if not isinstance(policy, Mapping):
+            raise ValueError("safety policy import payload must be an object")
+        normalized_policy = dict(policy)
+        if "rule_groups" in normalized_policy:
+            normalized_policy["_apply_rule_groups"] = True
+        updated = self.update_settings(
+            {"safety_policy": normalized_policy},
+            operator=operator,
+            source=source,
+        )
+        return asdict(updated.safety_policy)
+
+    def restore_default_safety_policy(
+        self,
+        *,
+        operator: str = "system",
+        source: str = "settings.safety_policy.restore",
+    ) -> dict[str, Any]:
+        updated = self.update_settings(
+            {"safety_policy": {"reset_to_defaults": True}},
+            operator=operator,
+            source=source,
+        )
+        return asdict(updated.safety_policy)
+
     def _safety_policy_engine(self) -> SafetyPolicyEngine:
         return SafetyPolicyEngine(self.get_settings().safety_policy)
 

@@ -72,6 +72,10 @@ class SafetyPolicyPatchRequest(StrictRequestModel):
     reset_to_defaults: bool | None = None
 
 
+class SafetyPolicyImportRequest(StrictRequestModel):
+    safety_policy: SafetyPolicyPatchRequest
+
+
 class SettingsPatchRequest(StrictRequestModel):
     auto_reply_enabled: bool | None = None
     reply_style: str | None = Field(None, max_length=64)

@@ -28,6 +28,8 @@ import type {
   WechatEnvironment,
   RecentLogEvent,
   SafetyPolicyAuditRecord,
+  SafetyPolicyConfig,
+  SafetyPolicyImportBody,
 } from "@/lib/api"
 
 async function assertApiClientContract() {
@@ -45,6 +47,12 @@ async function assertApiClientContract() {
   const settings: ApiResponse<Settings> = await apiClient.getSettings()
   const updatedSettings: ApiResponse<Settings> = await apiClient.updateSettings({ auto_reply_enabled: false })
   const safetyPolicyAudit: ApiResponse<SafetyPolicyAuditRecord[]> = await apiClient.getSafetyPolicyAudit(5)
+  const exportedSafetyPolicy: ApiResponse<SafetyPolicyConfig> = await apiClient.exportSafetyPolicy()
+  const safetyPolicyImportBody: SafetyPolicyImportBody = {
+    safety_policy: { rule_groups: { business_risk: false } },
+  }
+  const importedSafetyPolicy: ApiResponse<SafetyPolicyConfig> = await apiClient.importSafetyPolicy(safetyPolicyImportBody)
+  const restoredSafetyPolicy: ApiResponse<SafetyPolicyConfig> = await apiClient.restoreDefaultSafetyPolicy()
   const privacy: ApiResponse<PrivacyPolicy> = await apiClient.getPrivacyPolicy()
   const updatedPrivacy: ApiResponse<PrivacyPolicy> = await apiClient.updatePrivacyPolicy({ log_retention_days: 30 })
   const conversations: ApiResponse<ConversationListItem[]> = await apiClient.listConversations()
@@ -176,6 +184,9 @@ async function assertApiClientContract() {
     settings,
     updatedSettings,
     safetyPolicyAudit,
+    exportedSafetyPolicy,
+    importedSafetyPolicy,
+    restoredSafetyPolicy,
     privacy,
     updatedPrivacy,
     conversations,

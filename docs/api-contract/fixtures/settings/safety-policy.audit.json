@@ -1,0 +1,25 @@
+{
+  "data": [
+    {
+      "action": "reset_to_defaults",
+      "changed_rule_groups": {},
+      "operator": "api",
+      "reset_to_defaults": true,
+      "source": "settings.safety_policy.restore",
+      "timestamp": "2026-04-25T09:45:00Z"
+    },
+    {
+      "action": "rule_groups_updated",
+      "changed_rule_groups": {
+        "business_risk": false
+      },
+      "operator": "api",
+      "reset_to_defaults": false,
+      "source": "settings.safety_policy.import",
+      "timestamp": "2026-04-25T09:44:00Z"
+    }
+  ],
+  "error": null,
+  "success": true,
+  "trace_id": "fixture-settings-safety-policy-audit"
+}

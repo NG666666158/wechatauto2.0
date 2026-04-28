@@ -327,6 +327,99 @@ class RuntimeSendPreflightTests(unittest.TestCase):
         self.assertEqual(blocked["embedding_provider"], "FakeEmbeddings")
 
 
+class RuntimeMessageFlowTests(unittest.TestCase):
+    def test_message_flow_helpers_preserve_unread_record_normalization(self) -> None:
+        from wechat_ai.runtime import UnreadMessageRecord, normalize_unread_message_record
+
+        self.assertEqual(normalize_unread_message_record(" hello "), UnreadMessageRecord(text="hello", signature_key="hello"))
+        self.assertEqual(
+            normalize_unread_message_record(
+                {"message_content": " ping ", "nickname": " Bob ", "message_id": " msg-1 "}
+            ),
+            UnreadMessageRecord(text="ping", sender_name="Bob", signature_key="msg-1"),
+        )
+        self.assertEqual(
+            normalize_unread_message_record((" Alice ", " hi ", " runtime-2 ")),
+            UnreadMessageRecord(text="hi", sender_name="Alice", signature_key="runtime-2"),
+        )
+        self.assertIsNone(normalize_unread_message_record({"text": "   "}))
+
+    def test_message_flow_helpers_preserve_ordering_and_signatures(self) -> None:
+        from wechat_ai.runtime import (
+            UnreadMessageRecord,
+            build_merged_message,
+            legacy_unread_text_signature,
+            message_dedupe_signature,
+            normalize_group_sender_name,
+            order_unread_message_records,
+            order_unread_messages,
+        )
+
+        self.assertEqual(build_merged_message([" one ", "", " two "]), "one\ntwo")
+        self.assertEqual(normalize_group_sender_name(" Project Group ", "  "), "Project Group")
+        self.assertEqual(order_unread_messages(["second", "first"], ["ctx", "first", "second"]), ["first", "second"])
+
+        bob = UnreadMessageRecord(text="same", sender_name="Bob", signature_key="r-1")
+        alice = UnreadMessageRecord(text="same", sender_name="Alice", signature_key="r-2")
+        records = order_unread_message_records([bob, alice], ["same", "same"])
+        self.assertEqual(records, [bob, alice])
+
+        self.assertEqual(
+            message_dedupe_signature(
+                session_name=" Project\u2005Group ",
+                text=" @me\xa0same ",
+                is_group=True,
+                sender_name=" Bob ",
+            ),
+            "group:Project Group\0Bob\0@me same",
+        )
+        self.assertEqual(
+            message_dedupe_signature(session_name=" Alice ", text=" hi ", is_group=False, sender_name="Ignored"),
+            "friend:Alice\0Alice\0hi",
+        )
+        self.assertEqual(legacy_unread_text_signature("Alice", "hi"), "Alice\0unread\0hi")
+
+    def test_message_flow_helpers_preserve_active_pending_flush_decision(self) -> None:
+        from wechat_ai.runtime import pending_state_is_empty, should_flush_active_pending
+
+        self.assertTrue(pending_state_is_empty(None, ["queued"]))
+        self.assertTrue(pending_state_is_empty("Alice", []))
+        self.assertFalse(pending_state_is_empty("Alice", ["queued"]))
+        self.assertFalse(
+            should_flush_active_pending(
+                active_pending_session="Alice",
+                active_pending_messages=["queued"],
+                now=10.0,
+                active_pending_deadline=12.0,
+            )
+        )
+        self.assertTrue(
+            should_flush_active_pending(
+                active_pending_session="Alice",
+                active_pending_messages=["queued"],
+                now=10.0,
+                current_session_name="Bob",
+                active_pending_deadline=12.0,
+            )
+        )
+        self.assertTrue(
+            should_flush_active_pending(
+                active_pending_session="Alice",
+                active_pending_messages=["queued"],
+                now=12.0,
+                active_pending_deadline=12.0,
+            )
+        )
+        self.assertTrue(
+            should_flush_active_pending(
+                active_pending_session="Alice",
+                active_pending_messages=["queued"],
+                now=1.0,
+                force=True,
+            )
+        )
+
+
 class GlobalAutoReplyTests(unittest.TestCase):
     def setUp(self) -> None:
         self.runtime = import_wechat_runtime_with_stubs()
@@ -1897,6 +1990,7 @@ if __name__ == "__main__":
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(ReplyEngineTests))
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(LoggingAndMemoryTests))
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(RuntimeSendPreflightTests))
+    suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(RuntimeMessageFlowTests))
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(GlobalAutoReplyTests))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     print(json.dumps({"ok": result.wasSuccessful()}, ensure_ascii=False))

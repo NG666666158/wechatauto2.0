@@ -3,7 +3,7 @@
   "api_version": "0.1.0",
   "base_path": "/api/v1",
   "contract_version": "p4-baseline-v1",
-  "endpoint_count": 51,
+  "endpoint_count": 54,
   "endpoints": [
     {
       "id": "get_api_v1_controls_conversations_conversation_id",
@@ -707,6 +707,49 @@
       ]
     },
     {
+      "id": "get_api_v1_settings_safety_policy_export",
+      "method": "GET",
+      "path": "/api/v1/settings/safety-policy/export",
+      "request_schema": "",
+      "response_codes": [
+        "200"
+      ],
+      "response_schema": "ApiResponse_SafetyPolicyConfigData_",
+      "summary": "Export Safety Policy",
+      "tags": [
+        "settings"
+      ]
+    },
+    {
+      "id": "post_api_v1_settings_safety_policy_import",
+      "method": "POST",
+      "path": "/api/v1/settings/safety-policy/import",
+      "request_schema": "SafetyPolicyImportRequest",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "ApiResponse_SafetyPolicyConfigData_",
+      "summary": "Import Safety Policy",
+      "tags": [
+        "settings"
+      ]
+    },
+    {
+      "id": "post_api_v1_settings_safety_policy_restore_defaults",
+      "method": "POST",
+      "path": "/api/v1/settings/safety-policy/restore-defaults",
+      "request_schema": "",
+      "response_codes": [
+        "200"
+      ],
+      "response_schema": "ApiResponse_SafetyPolicyConfigData_",
+      "summary": "Restore Default Safety Policy",
+      "tags": [
+        "settings"
+      ]
+    },
+    {
       "id": "get_api_v1_shell_schedule_status",
       "method": "GET",
       "path": "/api/v1/shell/schedule-status",
@@ -782,7 +825,7 @@
       "/api/v1/errors/catalog"
     ]
   },
-  "schema_count": 91,
+  "schema_count": 93,
   "schemas": [
     "ApiErrorPayload",
     "ApiResponse_ConversationControlData_",
@@ -800,6 +843,7 @@
     "ApiResponse_RetentionApplyResultData_",
     "ApiResponse_RuntimeActionData_",
     "ApiResponse_RuntimeStatusData_",
+    "ApiResponse_SafetyPolicyConfigData_",
     "ApiResponse_SelfIdentityData_",
     "ApiResponse_SendReplyResultData_",
     "ApiResponse_SendUncertainMetricsData_",
@@ -856,6 +900,7 @@
     "SafetyPatternRulePatchRequest",
     "SafetyPolicyAuditRecordData",
     "SafetyPolicyConfigData",
+    "SafetyPolicyImportRequest",
     "SafetyPolicyPatchRequest",
     "ScheduleBlockData",
     "ScheduleBlockPatchRequest",

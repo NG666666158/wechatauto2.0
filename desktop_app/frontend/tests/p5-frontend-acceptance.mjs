@@ -335,6 +335,25 @@ const checks = [
     },
   },
   {
+    name: "settings page supports safety policy import export recovery",
+    run: () => {
+      const source = read("app/settings/page.tsx")
+      const apiSource = read("lib/api.ts")
+      return (
+        source.includes("SafetyPolicyImportExportPanel") &&
+        source.includes("exportSafetyPolicy") &&
+        source.includes("importSafetyPolicy") &&
+        source.includes("restoreDefaultSafetyPolicy") &&
+        source.includes("Safety Policy Import / Export") &&
+        source.includes("JSON.parse") &&
+        apiSource.includes("SafetyPolicyImportBody") &&
+        apiSource.includes('"/settings/safety-policy/export"') &&
+        apiSource.includes('"/settings/safety-policy/import"') &&
+        apiSource.includes('"/settings/safety-policy/restore-defaults"')
+      )
+    },
+  },
+  {
     name: "pending page renders approve send result feedback",
     run: () => {
       const source = read("app/pending/page.tsx")

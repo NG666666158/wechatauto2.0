@@ -6,7 +6,7 @@ import { AppShell } from "@/components/app-shell"
 import { ErrorState, LoadingState } from "@/components/api-state"
 import { apiClient } from "@/lib/api"
 import { getDesktopShellBridge, type DesktopShellPreferences } from "@/lib/electron-shell"
-import type { PrivacyPolicy, SafetyPolicyAuditRecord, Settings, SettingsPatch } from "@/lib/api"
+import type { PrivacyPolicy, SafetyPolicyAuditRecord, SafetyPolicyPatch, Settings, SettingsPatch } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import {
   ChevronDown,
@@ -148,6 +148,40 @@ export default function SettingsPage() {
     })
   }
 
+  function importSafetyPolicy(policy: SafetyPolicyPatch) {
+    startTransition(async () => {
+      setError("")
+      setMessage("")
+      const response = await apiClient.importSafetyPolicy({ safety_policy: policy })
+      if (!response.success || !response.data) {
+        setError(response.error ? `${response.error.code}: ${response.error.message}` : "Safety policy import failed")
+        return
+      }
+      const safetyPolicy = response.data
+      setSettings((current) => (current ? { ...current, safety_policy: safetyPolicy } : current))
+      const auditResponse = await apiClient.getSafetyPolicyAudit(5)
+      setSafetyPolicyAudit(auditResponse.success && auditResponse.data ? auditResponse.data : [])
+      setMessage("Safety policy imported")
+    })
+  }
+
+  function restoreDefaultSafetyPolicy() {
+    startTransition(async () => {
+      setError("")
+      setMessage("")
+      const response = await apiClient.restoreDefaultSafetyPolicy()
+      if (!response.success || !response.data) {
+        setError(response.error ? `${response.error.code}: ${response.error.message}` : "Safety policy restore failed")
+        return
+      }
+      const safetyPolicy = response.data
+      setSettings((current) => (current ? { ...current, safety_policy: safetyPolicy } : current))
+      const auditResponse = await apiClient.getSafetyPolicyAudit(5)
+      setSafetyPolicyAudit(auditResponse.success && auditResponse.data ? auditResponse.data : [])
+      setMessage("Safety policy restored")
+    })
+  }
+
   function setSensitiveReview(nextValue: boolean) {
     if (!nextValue && !window.confirm("关闭敏感消息先审核后，自动回复可能直接发出高风险内容。确认关闭吗？")) {
       return
@@ -195,6 +229,8 @@ export default function SettingsPage() {
                   updatePrivacy={updatePrivacy}
                   setSensitiveReview={setSensitiveReview}
                   safetyPolicyAudit={safetyPolicyAudit}
+                  importSafetyPolicy={importSafetyPolicy}
+                  restoreDefaultSafetyPolicy={restoreDefaultSafetyPolicy}
                 />
               ) : null}
               {activeTab === "回复设置" ? (
@@ -261,6 +297,8 @@ function BaseSettings({
   updatePrivacy,
   setSensitiveReview,
   safetyPolicyAudit,
+  importSafetyPolicy,
+  restoreDefaultSafetyPolicy,
 }: {
   settings: Settings
   privacy: PrivacyPolicy
@@ -269,7 +307,17 @@ function BaseSettings({
   updatePrivacy: (patch: Partial<PrivacyPolicy>, successMessage?: string) => void
   setSensitiveReview: (nextValue: boolean) => void
   safetyPolicyAudit: SafetyPolicyAuditRecord[]
+  importSafetyPolicy: (policy: SafetyPolicyPatch) => void
+  restoreDefaultSafetyPolicy: () => void
 }) {
+  const [safetyPolicyJson, setSafetyPolicyJson] = useState("")
+  const [safetyPolicyJsonError, setSafetyPolicyJsonError] = useState("")
+
+  useEffect(() => {
+    setSafetyPolicyJson(JSON.stringify(settings.safety_policy, null, 2))
+    setSafetyPolicyJsonError("")
+  }, [settings.safety_policy])
+
   function isRuleGroupEnabled(ruleGroup: string) {
     const configured = settings.safety_policy.rule_groups?.[ruleGroup]
     if (configured !== undefined) {
@@ -296,7 +344,33 @@ function BaseSettings({
   }
 
   function resetSafetyPolicy() {
-    updateSettings({ safety_policy: { reset_to_defaults: true } }, "安全策略已恢复默认")
+    restoreDefaultSafetyPolicy()
+  }
+
+  async function exportSafetyPolicy() {
+    setSafetyPolicyJsonError("")
+    const response = await apiClient.exportSafetyPolicy()
+    if (!response.success || !response.data) {
+      setSafetyPolicyJsonError(response.error ? `${response.error.code}: ${response.error.message}` : "Safety policy export failed")
+      return
+    }
+    setSafetyPolicyJson(JSON.stringify(response.data, null, 2))
+  }
+
+  function submitSafetyPolicyImport() {
+    setSafetyPolicyJsonError("")
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(safetyPolicyJson)
+    } catch {
+      setSafetyPolicyJsonError("Safety policy JSON is invalid")
+      return
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      setSafetyPolicyJsonError("Safety policy JSON must be an object")
+      return
+    }
+    importSafetyPolicy(parsed as SafetyPolicyPatch)
   }
 
   return (
@@ -372,6 +446,14 @@ function BaseSettings({
         desc="恢复 prompt 注入、敏感信息、业务风险的默认规则组配置"
         right={<IconButton label="恢复默认" disabled={pending} onClick={resetSafetyPolicy} />}
       />
+      <SafetyPolicyImportExportPanel
+        value={safetyPolicyJson}
+        error={safetyPolicyJsonError}
+        pending={pending}
+        onChange={setSafetyPolicyJson}
+        onExport={exportSafetyPolicy}
+        onImport={submitSafetyPolicyImport}
+      />
       <SafetyPolicyAuditTrail records={safetyPolicyAudit} />
       <SettingRow
         iconBg="bg-slate-600"
@@ -430,6 +512,45 @@ function formatChangedRuleGroups(groups: Record<string, boolean>) {
     return "-"
   }
   return entries.map(([key, enabled]) => `${key}=${enabled ? "on" : "off"}`).join(", ")
+}
+
+function SafetyPolicyImportExportPanel({
+  value,
+  error,
+  pending,
+  onChange,
+  onExport,
+  onImport,
+}: {
+  value: string
+  error: string
+  pending: boolean
+  onChange: (value: string) => void
+  onExport: () => void
+  onImport: () => void
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-5 py-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">Safety Policy Import / Export</h3>
+          <p className="mt-1 text-xs text-slate-500">Copy-paste JSON surface for recovery without file upload.</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <IconButton label="Export JSON" disabled={pending} onClick={onExport} />
+          <IconButton label="Import JSON" disabled={pending} onClick={onImport} />
+        </div>
+      </div>
+      <textarea
+        value={value}
+        disabled={pending}
+        spellCheck={false}
+        onChange={(event) => onChange(event.target.value)}
+        className="min-h-[160px] w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700 outline-none transition-colors focus:border-blue-400 disabled:opacity-60"
+      />
+      {error ? <p className="mt-2 text-xs font-medium text-rose-600">{error}</p> : null}
+    </div>
+  )
 }
 
 function ReplySettings({
