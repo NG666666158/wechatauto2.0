@@ -34,7 +34,7 @@ from .profile.profile_store import ProfileStore
 from .rag.embeddings import FakeEmbeddings
 from .rag.hybrid_retriever import HybridRetriever
 from .rag.keyword_retriever import KeywordRetriever
-from .rag.retriever import LocalIndexRetriever, index_uses_fake_embeddings
+from .rag.retriever import LocalIndexRetriever, index_has_trusted_embeddings
 from .reply_scheduler import PendingReplyBatch, ReplyScheduler
 from .runtime import SendCoordinator
 from .storage import RuntimeStateStore
@@ -190,11 +190,11 @@ def _build_retriever():
 
 def _precheck_trusted_knowledge_embeddings() -> dict[str, object]:
     index_path = KNOWLEDGE_DIR / "local_knowledge_index.json"
-    if index_path.exists() and index_uses_fake_embeddings(index_path):
+    if index_path.exists() and not index_has_trusted_embeddings(index_path):
         return {
             "ok": False,
             "reason_code": "UNTRUSTED_FAKE_EMBEDDINGS",
-            "reason": "knowledge index uses FakeEmbeddings and cannot be trusted for real sending",
+            "reason": "knowledge index embeddings are not explicitly trusted for real sending",
         }
     return {"ok": True}
 

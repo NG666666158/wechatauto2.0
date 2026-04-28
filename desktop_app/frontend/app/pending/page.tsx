@@ -6,11 +6,22 @@ import { AppShell } from "@/components/app-shell"
 import { EmptyState, ErrorState, LoadingState } from "@/components/api-state"
 import { apiClient } from "@/lib/api"
 import type { ConversationControlPatch, ReplyJob, SendJob } from "@/lib/api"
-import { AlertTriangle, Bot, Hand, Pause, RefreshCw, ShieldAlert } from "lucide-react"
+import { AlertTriangle, Bot, Check, CheckCircle2, Hand, Pause, RefreshCw, ShieldAlert, X } from "lucide-react"
 
 type ActionTarget = {
   conversationId: string
   action: "takeover" | "pause"
+}
+
+type ReplyActionTarget = {
+  replyJobId: string
+  action: "approve" | "cancel"
+  draftReply?: string | null
+}
+
+type SendActionTarget = {
+  sendJobId: string
+  resolution: "confirmed" | "failed"
 }
 
 export default function PendingPage() {
@@ -84,6 +95,52 @@ export default function PendingPage() {
     }
   }
 
+  async function updateReplyJob({ replyJobId, action, draftReply }: ReplyActionTarget) {
+    const targetKey = `reply:${action}:${replyJobId}`
+    setBusyTarget(targetKey)
+    setError("")
+    setNotice("")
+    try {
+      const response =
+        action === "approve"
+          ? await apiClient.approveReplyJob(replyJobId, draftReply ? { draft_reply: draftReply } : undefined)
+          : await apiClient.cancelReplyJob(replyJobId, { reason: "manual_cancel" })
+      if (!response.success) {
+        setError(response.error ? `${response.error.code}: ${response.error.message}` : "ReplyJob 操作失败")
+        return
+      }
+      await loadPending({ quiet: true })
+      setNotice(action === "approve" ? `已批准 ReplyJob ${replyJobId}` : `已取消 ReplyJob ${replyJobId}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "无法更新 ReplyJob")
+    } finally {
+      setBusyTarget("")
+    }
+  }
+
+  async function resolveSendJob({ sendJobId, resolution }: SendActionTarget) {
+    const targetKey = `send:${resolution}:${sendJobId}`
+    setBusyTarget(targetKey)
+    setError("")
+    setNotice("")
+    try {
+      const response = await apiClient.resolveSendJob(sendJobId, {
+        resolution,
+        reason: resolution === "confirmed" ? "manual_confirmed" : "manual_failed",
+      })
+      if (!response.success) {
+        setError(response.error ? `${response.error.code}: ${response.error.message}` : "SendJob 操作失败")
+        return
+      }
+      await loadPending({ quiet: true })
+      setNotice(resolution === "confirmed" ? `已标记 SendJob ${sendJobId} 为已确认` : `已标记 SendJob ${sendJobId} 为失败`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "无法更新 SendJob")
+    } finally {
+      setBusyTarget("")
+    }
+  }
+
   return (
     <AppShell
       title="待处理"
@@ -127,6 +184,7 @@ export default function PendingPage() {
                   job={job}
                   busyTarget={busyTarget}
                   onControl={updateControl}
+                  onReplyAction={updateReplyJob}
                 />
               ))}
             </QueuePanel>
@@ -143,6 +201,7 @@ export default function PendingPage() {
                   job={job}
                   busyTarget={busyTarget}
                   onControl={updateControl}
+                  onResolve={resolveSendJob}
                 />
               ))}
             </QueuePanel>
@@ -187,10 +246,12 @@ function ReplyJobCard({
   job,
   busyTarget,
   onControl,
+  onReplyAction,
 }: {
   job: ReplyJob
   busyTarget: string
   onControl: (target: ActionTarget) => void
+  onReplyAction: (target: ReplyActionTarget) => void
 }) {
   return (
     <article className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
@@ -199,6 +260,7 @@ function ReplyJobCard({
       <MetaRow label="风险" value={job.risk_level || "LOW"} />
       <TextBlock label="触发消息" value={job.input_text} />
       <TextBlock label="草稿回复" value={job.draft_reply || "暂无草稿内容"} strong />
+      <ReplyJobActions job={job} busyTarget={busyTarget} onReplyAction={onReplyAction} />
       <ControlActions conversationId={job.conversation_id} busyTarget={busyTarget} onControl={onControl} />
     </article>
   )
@@ -208,10 +270,12 @@ function SendJobCard({
   job,
   busyTarget,
   onControl,
+  onResolve,
 }: {
   job: SendJob
   busyTarget: string
   onControl: (target: ActionTarget) => void
+  onResolve: (target: SendActionTarget) => void
 }) {
   return (
     <article className="rounded-lg border border-rose-100 bg-rose-50/40 p-4">
@@ -223,8 +287,75 @@ function SendJobCard({
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>该记录不会在此页面重发，请先人工核对微信窗口中的真实发送状态。</span>
       </div>
+      <SendJobActions job={job} busyTarget={busyTarget} onResolve={onResolve} />
       <ControlActions conversationId={job.conversation_id} busyTarget={busyTarget} onControl={onControl} />
     </article>
+  )
+}
+
+function ReplyJobActions({
+  job,
+  busyTarget,
+  onReplyAction,
+}: {
+  job: ReplyJob
+  busyTarget: string
+  onReplyAction: (target: ReplyActionTarget) => void
+}) {
+  const approveKey = `reply:approve:${job.reply_job_id}`
+  const cancelKey = `reply:cancel:${job.reply_job_id}`
+  return (
+    <div className="mt-4 grid grid-cols-2 gap-2">
+      <button
+        disabled={busyTarget === approveKey}
+        onClick={() => onReplyAction({ replyJobId: job.reply_job_id, action: "approve", draftReply: job.draft_reply })}
+        className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 text-xs font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+      >
+        <Check className="h-3.5 w-3.5" />
+        {busyTarget === approveKey ? "处理中" : "批准"}
+      </button>
+      <button
+        disabled={busyTarget === cancelKey}
+        onClick={() => onReplyAction({ replyJobId: job.reply_job_id, action: "cancel" })}
+        className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+      >
+        <X className="h-3.5 w-3.5" />
+        {busyTarget === cancelKey ? "处理中" : "取消"}
+      </button>
+    </div>
+  )
+}
+
+function SendJobActions({
+  job,
+  busyTarget,
+  onResolve,
+}: {
+  job: SendJob
+  busyTarget: string
+  onResolve: (target: SendActionTarget) => void
+}) {
+  const confirmedKey = `send:confirmed:${job.send_job_id}`
+  const failedKey = `send:failed:${job.send_job_id}`
+  return (
+    <div className="mt-4 grid grid-cols-2 gap-2">
+      <button
+        disabled={busyTarget === confirmedKey}
+        onClick={() => onResolve({ sendJobId: job.send_job_id, resolution: "confirmed" })}
+        className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 text-xs font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+      >
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        {busyTarget === confirmedKey ? "处理中" : "标记已确认"}
+      </button>
+      <button
+        disabled={busyTarget === failedKey}
+        onClick={() => onResolve({ sendJobId: job.send_job_id, resolution: "failed" })}
+        className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-xs font-medium text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-slate-400"
+      >
+        <X className="h-3.5 w-3.5" />
+        {busyTarget === failedKey ? "处理中" : "标记失败"}
+      </button>
+    </div>
   )
 }
 

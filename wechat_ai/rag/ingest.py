@@ -78,6 +78,7 @@ def build_knowledge_index(
         "schema_version": 1,
         "knowledge_dir": str(resolved_knowledge_dir),
         "embedding_provider": embeddings.__class__.__name__,
+        "embedding_trusted": False,
         "chunk_size": chunk_size,
         "overlap": overlap,
         "documents_loaded": len(documents),
@@ -104,6 +105,8 @@ def build_knowledge_index(
         "chunks_created": len(chunks),
         "index_path": resolved_index_path,
         "knowledge_dir": resolved_knowledge_dir,
+        "embedding_provider": embeddings.__class__.__name__,
+        "embedding_trusted": False,
     }
 
 

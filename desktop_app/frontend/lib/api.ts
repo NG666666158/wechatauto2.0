@@ -267,6 +267,19 @@ export type SendJob = {
   updated_at?: string | null
 }
 
+export type ReplyJobApproveBody = {
+  draft_reply?: string
+}
+
+export type ReplyJobCancelBody = {
+  reason?: string
+}
+
+export type SendJobResolveBody = {
+  resolution: "confirmed" | "failed"
+  reason?: string
+}
+
 export type SendReplyResult = {
   status: string
   allowed: boolean
@@ -397,8 +410,14 @@ export const apiClient = {
     patch<ConversationControl>(`/controls/conversations/${encodeURIComponent(conversationId)}`, patchBody),
   listReplyJobs: (status?: string, limit = 100) =>
     request<ReplyJob[]>(withQuery("/jobs/reply", { status, limit })),
+  approveReplyJob: (replyJobId: string, body?: ReplyJobApproveBody) =>
+    post<ReplyJob>(`/jobs/reply/${encodeURIComponent(replyJobId)}/approve`, body),
+  cancelReplyJob: (replyJobId: string, body?: ReplyJobCancelBody) =>
+    post<ReplyJob>(`/jobs/reply/${encodeURIComponent(replyJobId)}/cancel`, body),
   listSendJobs: (status?: string, limit = 100) =>
     request<SendJob[]>(withQuery("/jobs/send", { status, limit })),
+  resolveSendJob: (sendJobId: string, body: SendJobResolveBody) =>
+    post<SendJob>(`/jobs/send/${encodeURIComponent(sendJobId)}/resolve`, body),
   listUncertainSendJobs: (limit = 100) =>
     request<SendJob[]>(withQuery("/jobs/send-uncertain", { limit })),
   listCustomers: () => request<Customer[]>("/customers"),

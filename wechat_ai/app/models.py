@@ -153,6 +153,7 @@ class KnowledgeIndexStatus:
     chunks_created: int = 0
     last_built_at: str | None = None
     embedding_provider: str | None = None
+    embedding_trusted: bool = False
     supported_extensions: tuple[str, ...] = (".json", ".md", ".txt")
 
 

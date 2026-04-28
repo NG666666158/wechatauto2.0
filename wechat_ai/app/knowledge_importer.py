@@ -11,6 +11,7 @@ from wechat_ai import paths
 from wechat_ai.app.models import KnowledgeFileRecord, KnowledgeIndexStatus
 from wechat_ai.rag.document_extractors import DocumentExtractorRegistry
 from wechat_ai.rag.ingest import build_knowledge_index
+from wechat_ai.rag.retriever import index_embedding_provider, index_has_trusted_embeddings
 
 
 @dataclass(slots=True)
@@ -119,7 +120,8 @@ class KnowledgeImporter:
             documents_loaded=int(summary["documents_loaded"]),
             chunks_created=int(summary["chunks_created"]),
             last_built_at=self._index_last_built_at(),
-            embedding_provider="FakeEmbeddings",
+            embedding_provider=str(summary["embedding_provider"]),
+            embedding_trusted=bool(summary["embedding_trusted"]),
             supported_extensions=self._supported_extensions(),
         )
 
@@ -156,7 +158,8 @@ class KnowledgeImporter:
             documents_loaded=int(payload.get("documents_loaded", 0) or 0),
             chunks_created=int(payload.get("chunks_created", 0) or 0),
             last_built_at=self._index_last_built_at(),
-            embedding_provider=str(payload.get("embedding_provider")) if payload.get("embedding_provider") else None,
+            embedding_provider=index_embedding_provider(self.index_path),
+            embedding_trusted=index_has_trusted_embeddings(self.index_path),
             supported_extensions=self._supported_extensions(),
         )
 

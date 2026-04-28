@@ -414,6 +414,58 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_reply_job_manual_actions_update_runtime_state(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_reply_job_actions")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+            reply = service.runtime_state_store.create_reply_job(
+                conversation_id="friend:alice",
+                trigger_event_ids=["event-1"],
+                input_text="hello",
+                draft_reply="old draft",
+                status="PENDING_REVIEW",
+                need_human_review=True,
+            )
+
+            approved = service.approve_reply_job(reply["reply_job_id"], draft_reply="new draft")
+            cancelled = service.cancel_reply_job(reply["reply_job_id"], reason="operator cancelled")
+
+            self.assertEqual(approved["status"], "APPROVED")
+            self.assertEqual(approved["draft_reply"], "new draft")
+            self.assertEqual(cancelled["status"], "CANCELLED")
+            self.assertEqual(cancelled["draft_reply"], "new draft")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_resolve_uncertain_send_job_updates_runtime_state(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_resolve_send")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+            send = service.runtime_state_store.create_send_job(
+                reply_job_id="reply-1",
+                conversation_id="friend:alice",
+                target_title="Alice",
+                content="hi",
+                status="SEND_UNCERTAIN",
+            )
+
+            failed = service.resolve_uncertain_send_job(
+                send["send_job_id"],
+                resolution="failed",
+                reason="not visible after manual check",
+            )
+
+            self.assertEqual(failed["status"], "SEND_FAILED")
+            self.assertEqual(failed["confirmation_result"]["source"], "manual")
+            self.assertEqual(failed["confirmation_result"]["resolution"], "failed")
+            self.assertEqual(failed["confirmation_result"]["reason"], "not visible after manual check")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_send_reply_calls_sender_and_records_outgoing_message(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 

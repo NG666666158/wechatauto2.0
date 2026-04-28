@@ -107,6 +107,90 @@ class RuntimeStateStoreTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_mark_reply_job_updates_status_and_optional_draft(self) -> None:
+        from wechat_ai.storage.runtime_state import RuntimeStateStore
+
+        temp_dir = _fresh_dir(".tmp_runtime_state_mark_reply")
+        try:
+            store = RuntimeStateStore(temp_dir / "runtime_state.sqlite3")
+            reply = store.create_reply_job(
+                conversation_id="friend:Alice",
+                trigger_event_ids=["event-1"],
+                input_text="hello",
+                draft_reply="old draft",
+                status="PENDING_REVIEW",
+                need_human_review=True,
+            )
+
+            approved = store.mark_reply_job(
+                reply["reply_job_id"],
+                status="APPROVED",
+                draft_reply="new draft",
+            )
+            cancelled = store.mark_reply_job(reply["reply_job_id"], status="CANCELLED")
+
+            self.assertEqual(approved["status"], "APPROVED")
+            self.assertEqual(approved["draft_reply"], "new draft")
+            self.assertEqual(cancelled["status"], "CANCELLED")
+            self.assertEqual(cancelled["draft_reply"], "new draft")
+            self.assertEqual(store.get_reply_job(reply["reply_job_id"])["status"], "CANCELLED")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_resolve_uncertain_send_job_records_manual_confirmation_result(self) -> None:
+        from wechat_ai.storage.runtime_state import RuntimeStateStore
+
+        temp_dir = _fresh_dir(".tmp_runtime_state_resolve_uncertain")
+        try:
+            store = RuntimeStateStore(temp_dir / "runtime_state.sqlite3")
+            reply = store.create_reply_job(
+                conversation_id="friend:Alice",
+                trigger_event_ids=["event-1"],
+                input_text="hello",
+                draft_reply="hi",
+                status="APPROVED",
+            )
+            send = store.create_send_job(
+                reply_job_id=reply["reply_job_id"],
+                conversation_id="friend:Alice",
+                target_title="Alice",
+                content="hi",
+                status="SEND_UNCERTAIN",
+            )
+
+            confirmed = store.resolve_uncertain_send_job(
+                send["send_job_id"],
+                resolution="confirmed",
+                reason="operator saw it in chat",
+            )
+
+            self.assertEqual(confirmed["status"], "SENT_CONFIRMED")
+            self.assertEqual(confirmed["confirmation_result"]["source"], "manual")
+            self.assertEqual(confirmed["confirmation_result"]["resolution"], "confirmed")
+            self.assertEqual(confirmed["confirmation_result"]["reason"], "operator saw it in chat")
+            self.assertIn("resolved_at", confirmed["confirmation_result"])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_resolve_uncertain_send_job_rejects_non_uncertain_status(self) -> None:
+        from wechat_ai.storage.runtime_state import RuntimeStateStore
+
+        temp_dir = _fresh_dir(".tmp_runtime_state_resolve_reject")
+        try:
+            store = RuntimeStateStore(temp_dir / "runtime_state.sqlite3")
+            send = store.create_send_job(
+                reply_job_id="reply-1",
+                conversation_id="friend:Alice",
+                target_title="Alice",
+                content="hi",
+                status="SENT_CONFIRMED",
+            )
+
+            with self.assertRaisesRegex(ValueError, "SEND_UNCERTAIN"):
+                store.resolve_uncertain_send_job(send["send_job_id"], resolution="failed")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 class SendCoordinatorTests(TestCase):
     def test_confirmed_send_records_attempt_and_prevents_duplicate_resend(self) -> None:

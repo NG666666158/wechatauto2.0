@@ -14,6 +14,7 @@ class KnowledgeStatusData(BaseModel):
     chunks_created: int = 0
     last_built_at: str | None = None
     embedding_provider: str | None = None
+    embedding_trusted: bool = False
     supported_extensions: list[str] | tuple[str, ...] = Field(default_factory=list)
 
 

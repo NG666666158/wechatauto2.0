@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from wechat_ai import RetrievedChunk
-from wechat_ai.rag.embeddings import BaseEmbeddings
+from wechat_ai.rag.embeddings import BaseEmbeddings, EmbeddingProviderInfo
 from wechat_ai.rag.reranker import BaseReranker, NoOpReranker
 
 
@@ -61,14 +61,26 @@ def load_index_chunks(index_path: Path) -> list[dict[str, Any]]:
     return [chunk for chunk in chunks if isinstance(chunk, dict)]
 
 
+def index_embedding_provider(index_path: Path) -> str | None:
+    return _load_embedding_provider_info(index_path).provider
+
+
+def index_has_trusted_embeddings(index_path: Path) -> bool:
+    return _load_embedding_provider_info(index_path).trusted
+
+
 def index_uses_fake_embeddings(index_path: Path) -> bool:
+    return _load_embedding_provider_info(index_path).uses_fake_embeddings
+
+
+def _load_embedding_provider_info(index_path: Path) -> EmbeddingProviderInfo:
     if not index_path.exists():
-        return False
+        return EmbeddingProviderInfo()
     try:
         payload = load_index_payload(index_path)
     except (OSError, ValueError, json.JSONDecodeError):
-        return False
-    return str(payload.get("embedding_provider") or "").strip() == "FakeEmbeddings"
+        return EmbeddingProviderInfo()
+    return EmbeddingProviderInfo.from_index_payload(payload)
 
 
 def _cosine_similarity(left: list[float], right: list[float]) -> float:

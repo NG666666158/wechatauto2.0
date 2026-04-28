@@ -20,7 +20,7 @@ from wechat_ai.orchestration.prompt_builder import PromptBuilder
 from wechat_ai.rag.embeddings import FakeEmbeddings
 from wechat_ai.rag.hybrid_retriever import HybridRetriever
 from wechat_ai.rag.keyword_retriever import KeywordRetriever
-from wechat_ai.rag.retriever import LocalIndexRetriever, index_uses_fake_embeddings
+from wechat_ai.rag.retriever import LocalIndexRetriever, index_has_trusted_embeddings
 from wechat_ai.runtime import SendCoordinator
 from wechat_ai.safety import SafetyPolicyEngine
 from wechat_ai.storage import RuntimeStateStore
@@ -868,11 +868,35 @@ class DesktopAppService:
     def list_reply_jobs(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, object]]:
         return self.runtime_state_store.list_reply_jobs(status=status, limit=limit)
 
+    def approve_reply_job(self, reply_job_id: str, *, draft_reply: str | None = None) -> dict[str, object]:
+        return self.runtime_state_store.mark_reply_job(
+            reply_job_id,
+            status="APPROVED",
+            draft_reply=draft_reply,
+        )
+
+    def cancel_reply_job(self, reply_job_id: str, *, reason: str | None = None) -> dict[str, object]:
+        del reason
+        return self.runtime_state_store.mark_reply_job(reply_job_id, status="CANCELLED")
+
     def list_send_jobs(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, object]]:
         return self.runtime_state_store.list_send_jobs(status=status, limit=limit)
 
     def list_uncertain_send_jobs(self, *, limit: int = 100) -> list[dict[str, object]]:
         return self.runtime_state_store.list_uncertain_send_jobs(limit=limit)
+
+    def resolve_uncertain_send_job(
+        self,
+        send_job_id: str,
+        *,
+        resolution: str,
+        reason: str | None = None,
+    ) -> dict[str, object]:
+        return self.runtime_state_store.resolve_uncertain_send_job(
+            send_job_id,
+            resolution=resolution,
+            reason=reason,
+        )
 
     def validate_send_reply(self, conversation_id: str, text: str) -> dict[str, object]:
         normalized_id = str(conversation_id).strip()
@@ -1026,11 +1050,11 @@ class DesktopAppService:
         status = self.knowledge_importer.get_status()
         if not status.ready:
             return {"ok": True}
-        if index_uses_fake_embeddings(Path(status.index_path)):
+        if not index_has_trusted_embeddings(Path(status.index_path)):
             return {
                 "ok": False,
                 "reason_code": "UNTRUSTED_FAKE_EMBEDDINGS",
-                "reason": "knowledge index uses FakeEmbeddings and cannot be trusted for real sending",
+                "reason": "knowledge index embeddings are not explicitly trusted for real sending",
             }
         return {"ok": True}
 

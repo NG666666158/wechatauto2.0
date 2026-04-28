@@ -47,7 +47,10 @@ const checks = [
         "listConversations",
         "sendConversationReply",
         "listReplyJobs",
+        "approveReplyJob",
+        "cancelReplyJob",
         "listSendJobs",
+        "resolveSendJob",
         "listUncertainSendJobs",
         "listCustomers",
         "updateGlobalSelfIdentity",
@@ -71,6 +74,13 @@ const checks = [
       return (
         source.includes("listReplyJobs") &&
         source.includes("listUncertainSendJobs") &&
+        source.includes("approveReplyJob") &&
+        source.includes("cancelReplyJob") &&
+        source.includes("resolveSendJob") &&
+        source.includes("批准") &&
+        source.includes("取消") &&
+        source.includes("标记已确认") &&
+        source.includes("标记失败") &&
         source.includes("updateConversationControl") &&
         source.includes("SEND_UNCERTAIN") &&
         !source.includes("sendConversationReply")

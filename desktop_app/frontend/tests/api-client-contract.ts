@@ -42,8 +42,18 @@ async function assertApiClientContract() {
   const conversation: ApiResponse<ConversationDetail> = await apiClient.getConversation("friend:zhang")
   const control: ApiResponse<ConversationControl> = await apiClient.getConversationControl("friend:zhang")
   const replyJobs: ApiResponse<ReplyJob[]> = await apiClient.listReplyJobs(undefined, 20)
+  const approvedReplyJob: ApiResponse<ReplyJob> = await apiClient.approveReplyJob("reply_001", {
+    draft_reply: "manual approved reply",
+  })
+  const cancelledReplyJob: ApiResponse<ReplyJob> = await apiClient.cancelReplyJob("reply_001", {
+    reason: "manual cancel",
+  })
   const sendJobs: ApiResponse<SendJob[]> = await apiClient.listSendJobs("SEND_UNCERTAIN", 20)
   const uncertainSendJobs: ApiResponse<SendJob[]> = await apiClient.listUncertainSendJobs(20)
+  const resolvedSendJob: ApiResponse<SendJob> = await apiClient.resolveSendJob("send_001", {
+    resolution: "confirmed",
+    reason: "manual confirmation",
+  })
   const suggestion: ApiResponse<ReplySuggestion> = await apiClient.suggestReply("friend:zhang", "请介绍一下试用政策")
   const sent: ApiResponse<SendReplyResult> = await apiClient.sendConversationReply("friend:zhang", "您好，稍后为您介绍。")
   const updatedControl: ApiResponse<ConversationControl> = await apiClient.updateConversationControl("friend:zhang", {
@@ -87,8 +97,11 @@ async function assertApiClientContract() {
     conversation,
     control,
     replyJobs,
+    approvedReplyJob,
+    cancelledReplyJob,
     sendJobs,
     uncertainSendJobs,
+    resolvedSendJob,
     suggestion,
     sent,
     updatedControl,

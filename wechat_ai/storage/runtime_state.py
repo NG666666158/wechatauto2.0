@@ -120,6 +120,41 @@ class RuntimeStateStore:
             )
             return self._fetch_one(conn, "SELECT * FROM reply_jobs WHERE reply_job_id = ?", (reply_job_id,))
 
+    def get_reply_job(self, reply_job_id: str) -> dict[str, Any]:
+        with self._connect() as conn:
+            row = self._fetch_one(conn, "SELECT * FROM reply_jobs WHERE reply_job_id = ?", (reply_job_id,))
+        if not row:
+            raise KeyError(f"reply job not found: {reply_job_id}")
+        return row
+
+    def mark_reply_job(
+        self,
+        reply_job_id: str,
+        *,
+        status: str,
+        draft_reply: str | None = None,
+    ) -> dict[str, Any]:
+        with self._connect() as conn:
+            current = self._fetch_one(conn, "SELECT * FROM reply_jobs WHERE reply_job_id = ?", (reply_job_id,))
+            if not current:
+                raise KeyError(f"reply job not found: {reply_job_id}")
+            conn.execute(
+                """
+                UPDATE reply_jobs
+                SET status = ?,
+                    draft_reply = COALESCE(?, draft_reply),
+                    updated_at = ?
+                WHERE reply_job_id = ?
+                """,
+                (
+                    str(status).strip(),
+                    draft_reply,
+                    utc_timestamp(),
+                    reply_job_id,
+                ),
+            )
+            return self._fetch_one(conn, "SELECT * FROM reply_jobs WHERE reply_job_id = ?", (reply_job_id,))
+
     def create_send_job(
         self,
         *,
@@ -155,6 +190,47 @@ class RuntimeStateStore:
                     safe_key,
                     now,
                     now,
+                ),
+            )
+            return self._fetch_one(conn, "SELECT * FROM send_jobs WHERE send_job_id = ?", (send_job_id,))
+
+    def resolve_uncertain_send_job(
+        self,
+        send_job_id: str,
+        *,
+        resolution: str,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_resolution = str(resolution).strip().lower()
+        if normalized_resolution not in {"confirmed", "failed"}:
+            raise ValueError("resolution must be confirmed or failed")
+        next_status = "SENT_CONFIRMED" if normalized_resolution == "confirmed" else "SEND_FAILED"
+        with self._connect() as conn:
+            current = self._fetch_one(conn, "SELECT * FROM send_jobs WHERE send_job_id = ?", (send_job_id,))
+            if not current:
+                raise KeyError(f"send job not found: {send_job_id}")
+            if current.get("status") != "SEND_UNCERTAIN":
+                raise ValueError(f"send job must be SEND_UNCERTAIN to resolve manually: {send_job_id}")
+            confirmation_result = {
+                "source": "manual",
+                "resolution": normalized_resolution,
+                "reason": str(reason or ""),
+                "resolved_at": utc_timestamp(),
+            }
+            conn.execute(
+                """
+                UPDATE send_jobs
+                SET status = ?,
+                    lock_owner = NULL,
+                    confirmation_result = ?,
+                    updated_at = ?
+                WHERE send_job_id = ?
+                """,
+                (
+                    next_status,
+                    _json_dumps(confirmation_result),
+                    utc_timestamp(),
+                    send_job_id,
                 ),
             )
             return self._fetch_one(conn, "SELECT * FROM send_jobs WHERE send_job_id = ?", (send_job_id,))

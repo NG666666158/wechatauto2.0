@@ -15,7 +15,12 @@ TMP_ROOT.mkdir(exist_ok=True)
 from wechat_ai import RetrievedChunk  # type: ignore  # noqa: E402
 from wechat_ai.rag.embeddings import BaseEmbeddings  # type: ignore  # noqa: E402
 from wechat_ai.rag.reranker import NoOpReranker  # type: ignore  # noqa: E402
-from wechat_ai.rag.retriever import LocalIndexRetriever  # type: ignore  # noqa: E402
+from wechat_ai.rag.retriever import (  # type: ignore  # noqa: E402
+    LocalIndexRetriever,
+    index_embedding_provider,
+    index_has_trusted_embeddings,
+    index_uses_fake_embeddings,
+)
 from wechat_ai.rag.keyword_retriever import KeywordRetriever  # type: ignore  # noqa: E402
 from wechat_ai.rag.hybrid_retriever import HybridRetriever  # type: ignore  # noqa: E402
 
@@ -122,6 +127,60 @@ class LocalIndexRetrieverTests(unittest.TestCase):
         chunks = retriever.retrieve("how do i get a refund for billing", limit=1)
 
         self.assertEqual([chunk.text for chunk in chunks], ["billing support price refund"])
+
+    def test_embedding_provider_helpers_treat_fake_indexes_as_untrusted(self) -> None:
+        temp_dir = self._make_temp_dir()
+        index_path = temp_dir / "fake_embeddings_index.json"
+        index_path.write_text(
+            json.dumps(
+                {
+                    "embedding_provider": "FakeEmbeddings",
+                    "embedding_trusted": False,
+                    "chunks": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        self.assertEqual(index_embedding_provider(index_path), "FakeEmbeddings")
+        self.assertTrue(index_uses_fake_embeddings(index_path))
+        self.assertFalse(index_has_trusted_embeddings(index_path))
+
+    def test_embedding_provider_helpers_trust_explicit_non_fake_provider(self) -> None:
+        temp_dir = self._make_temp_dir()
+        index_path = temp_dir / "trusted_embeddings_index.json"
+        index_path.write_text(
+            json.dumps(
+                {
+                    "embedding_provider": "TrustedFoo",
+                    "embedding_trusted": True,
+                    "chunks": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        self.assertEqual(index_embedding_provider(index_path), "TrustedFoo")
+        self.assertFalse(index_uses_fake_embeddings(index_path))
+        self.assertTrue(index_has_trusted_embeddings(index_path))
+
+    def test_embedding_provider_helpers_keep_legacy_fake_index_untrusted(self) -> None:
+        temp_dir = self._make_temp_dir()
+        index_path = temp_dir / "legacy_fake_embeddings_index.json"
+        index_path.write_text(json.dumps({"embedding_provider": "FakeEmbeddings", "chunks": []}), encoding="utf-8")
+
+        self.assertEqual(index_embedding_provider(index_path), "FakeEmbeddings")
+        self.assertTrue(index_uses_fake_embeddings(index_path))
+        self.assertFalse(index_has_trusted_embeddings(index_path))
+
+    def test_embedding_provider_helpers_keep_legacy_non_fake_index_untrusted(self) -> None:
+        temp_dir = self._make_temp_dir()
+        index_path = temp_dir / "legacy_provider_index.json"
+        index_path.write_text(json.dumps({"embedding_provider": "TrustedFoo", "chunks": []}), encoding="utf-8")
+
+        self.assertEqual(index_embedding_provider(index_path), "TrustedFoo")
+        self.assertFalse(index_uses_fake_embeddings(index_path))
+        self.assertFalse(index_has_trusted_embeddings(index_path))
 
 
 class KeywordRetrieverTests(unittest.TestCase):

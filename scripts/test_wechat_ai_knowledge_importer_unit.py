@@ -38,6 +38,8 @@ class KnowledgeImporterTests(TestCase):
             self.assertTrue((root / "knowledge" / "local_knowledge_index.json").exists())
             self.assertIsNotNone(result.index_status)
             self.assertTrue(result.index_status.ready)
+            self.assertEqual(result.index_status.embedding_provider, "FakeEmbeddings")
+            self.assertFalse(result.index_status.embedding_trusted)
         finally:
             shutil.rmtree(root, ignore_errors=True)
 
@@ -153,6 +155,8 @@ class KnowledgeImporterTests(TestCase):
             status = importer.get_status()
             self.assertTrue(status.ready)
             self.assertGreaterEqual(status.documents_loaded, 1)
+            self.assertEqual(status.embedding_provider, "FakeEmbeddings")
+            self.assertFalse(status.embedding_trusted)
         finally:
             shutil.rmtree(root, ignore_errors=True)
 

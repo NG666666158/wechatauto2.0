@@ -87,6 +87,15 @@ class FakeDesktopService:
                 "status": "SEND_UNCERTAIN",
             }
         ]
+        self.reply_jobs: list[dict[str, object]] = [
+            {
+                "reply_job_id": "reply_001",
+                "conversation_id": "friend:alice",
+                "input_text": "hello",
+                "draft_reply": "old draft",
+                "status": "PENDING_REVIEW",
+            }
+        ]
         self.bootstrap_calls = 0
         self.last_bootstrap_request: dict[str, object] = {}
         self.bootstrap_result: dict[str, object] = {
@@ -150,8 +159,10 @@ class FakeDesktopService:
         return {"ready": False, "index_path": "memory://test-index"}
 
     def list_reply_jobs(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, object]]:
-        del status, limit
-        return []
+        del limit
+        if status:
+            return [job for job in self.reply_jobs if job.get("status") == status]
+        return list(self.reply_jobs)
 
     def list_send_jobs(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, object]]:
         del limit
@@ -162,6 +173,41 @@ class FakeDesktopService:
     def list_uncertain_send_jobs(self, *, limit: int = 100) -> list[dict[str, object]]:
         del limit
         return list(self.uncertain_send_jobs)
+
+    def approve_reply_job(self, reply_job_id: str, *, draft_reply: str | None = None) -> dict[str, object]:
+        for job in self.reply_jobs:
+            if job["reply_job_id"] == reply_job_id:
+                job["status"] = "APPROVED"
+                if draft_reply is not None:
+                    job["draft_reply"] = draft_reply
+                return dict(job)
+        raise KeyError(reply_job_id)
+
+    def cancel_reply_job(self, reply_job_id: str, *, reason: str | None = None) -> dict[str, object]:
+        del reason
+        for job in self.reply_jobs:
+            if job["reply_job_id"] == reply_job_id:
+                job["status"] = "CANCELLED"
+                return dict(job)
+        raise KeyError(reply_job_id)
+
+    def resolve_uncertain_send_job(
+        self,
+        send_job_id: str,
+        *,
+        resolution: str,
+        reason: str | None = None,
+    ) -> dict[str, object]:
+        for job in self.uncertain_send_jobs:
+            if job["send_job_id"] == send_job_id:
+                job["status"] = "SENT_CONFIRMED" if resolution == "confirmed" else "SEND_FAILED"
+                job["confirmation_result"] = {
+                    "source": "manual",
+                    "resolution": resolution,
+                    "reason": reason or "",
+                }
+                return dict(job)
+        raise KeyError(send_job_id)
 
     def get_settings(self) -> dict[str, object]:
         return dict(self.settings)
@@ -433,6 +479,9 @@ def test_openapi_schema_is_available() -> None:
     assert "/api/v1/controls/conversations/{conversation_id}" in payload["paths"]
     assert "/api/v1/environment/wechat" in payload["paths"]
     assert "/api/v1/events" in payload["paths"]
+    assert "/api/v1/jobs/reply/{reply_job_id}/approve" in payload["paths"]
+    assert "/api/v1/jobs/reply/{reply_job_id}/cancel" in payload["paths"]
+    assert "/api/v1/jobs/send/{send_job_id}/resolve" in payload["paths"]
     assert "ApiResponse" in str(payload["components"]["schemas"])
 
 
@@ -1099,7 +1148,40 @@ def test_runtime_jobs_endpoints_expose_send_uncertain_queue() -> None:
     assert send_jobs["data"][0]["send_job_id"] == "send_001"
     assert send_jobs["data"][0]["status"] == "SEND_UNCERTAIN"
     assert uncertain["data"][0]["conversation_id"] == "friend:alice"
-    assert reply_jobs["data"] == []
+    assert reply_jobs["data"][0]["reply_job_id"] == "reply_001"
+
+
+def test_runtime_jobs_manual_actions_update_reply_and_uncertain_send_jobs() -> None:
+    from wechat_ai.server import create_app
+
+    service = FakeDesktopService()
+    client = TestClient(create_app(desktop_service=service))
+
+    approved = client.post(
+        "/api/v1/jobs/reply/reply_001/approve",
+        json={"draft_reply": "new draft"},
+        headers={"x-trace-id": "trace-approve"},
+    )
+    cancelled = client.post(
+        "/api/v1/jobs/reply/reply_001/cancel",
+        json={"reason": "operator cancelled"},
+        headers={"x-trace-id": "trace-cancel"},
+    )
+    resolved = client.post(
+        "/api/v1/jobs/send/send_001/resolve",
+        json={"resolution": "confirmed", "reason": "visible in chat"},
+        headers={"x-trace-id": "trace-resolve"},
+    )
+
+    assert approved.status_code == 200
+    assert approved.json()["success"] is True
+    assert approved.json()["trace_id"] == "trace-approve"
+    assert approved.json()["data"]["status"] == "APPROVED"
+    assert approved.json()["data"]["draft_reply"] == "new draft"
+    assert cancelled.json()["data"]["status"] == "CANCELLED"
+    assert resolved.json()["data"]["status"] == "SENT_CONFIRMED"
+    assert resolved.json()["data"]["confirmation_result"]["source"] == "manual"
+    assert resolved.json()["data"]["confirmation_result"]["resolution"] == "confirmed"
 
 
 def test_recent_logs_can_filter_by_event_type_trace_id_and_errors() -> None:
@@ -1167,6 +1249,7 @@ def main() -> None:
     test_message_page_conversation_and_suggestion_endpoints_are_available()
     test_frontend_ops_privacy_and_environment_endpoints_are_available()
     test_runtime_jobs_endpoints_expose_send_uncertain_queue()
+    test_runtime_jobs_manual_actions_update_reply_and_uncertain_send_jobs()
     test_recent_logs_can_filter_by_event_type_trace_id_and_errors()
     test_logs_summary_reports_recent_error_count_and_last_event_time()
     print("wechat_ai server unit tests passed")
