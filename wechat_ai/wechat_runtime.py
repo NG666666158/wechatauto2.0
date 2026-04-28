@@ -37,6 +37,7 @@ from .rag.keyword_retriever import KeywordRetriever
 from .rag.retriever import LocalIndexRetriever, index_has_trusted_embeddings
 from .reply_scheduler import PendingReplyBatch, ReplyScheduler
 from .runtime import SendCoordinator, UiActionLock
+from .safety import SafetyPolicyEngine
 from .storage import RuntimeStateStore
 
 
@@ -286,6 +287,7 @@ class WeChatAIApp:
     runtime_state_store: RuntimeStateStore = field(default_factory=_build_runtime_state_store)
     runtime_send_sequence: int = 0
     ui_action_lock: UiActionLock = field(default_factory=UiActionLock)
+    safety_policy_engine: SafetyPolicyEngine = field(default_factory=SafetyPolicyEngine)
     send_confirmer: Any | None = None
     stop_event: Any | None = None
     enforce_trusted_knowledge_for_sending: bool = False
@@ -874,6 +876,43 @@ class WeChatAIApp:
                 sender_name=sender_name,
             )
         )
+        conversation_id = self._build_conversation_id(session_name, is_group)
+        safety = self.safety_policy_engine.assess_input(message_text)
+        if safety.need_human_review:
+            self.runtime_send_sequence += 1
+            runtime_signature = RuntimeStateStore.message_signature(
+                conversation_id=conversation_id,
+                sender_name=sender_name or session_name,
+                content=message_text,
+                source=f"runtime_review:{id(self)}:{self.runtime_send_sequence}",
+            )
+            message_event = self.runtime_state_store.record_message_event(
+                conversation_id=conversation_id,
+                conversation_title=session_name,
+                sender_name=sender_name or session_name,
+                content=message_text,
+                source="runtime_review",
+                signature=runtime_signature,
+            )
+            reply_job = self.runtime_state_store.create_reply_job(
+                conversation_id=conversation_id,
+                trigger_event_ids=[str(message_event["event_id"])],
+                input_text=message_text,
+                draft_reply="",
+                status="PENDING_REVIEW",
+                risk_level=safety.risk_level,
+                need_human_review=True,
+            )
+            self._log_event(
+                "reply_review_required",
+                chat_id=session_name,
+                chat_type="group" if is_group else "friend",
+                conversation_id=conversation_id,
+                reply_job_id=reply_job.get("reply_job_id"),
+                risk_level=safety.risk_level,
+                reason_codes=list(safety.reason_codes),
+            )
+            return result
         try:
             reply = self._generate_reply_message(
                 Message(
@@ -907,7 +946,6 @@ class WeChatAIApp:
             self._log_send_skipped_by_stop_event(session_name, is_group, "before_send")
             return result
         self._debug(f"send_reply session={session_name!r} is_group={is_group} text={message_text!r} reply={reply!r}")
-        conversation_id = self._build_conversation_id(session_name, is_group)
         self.runtime_send_sequence += 1
         runtime_signature = RuntimeStateStore.message_signature(
             conversation_id=conversation_id,

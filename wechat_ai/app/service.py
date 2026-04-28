@@ -968,6 +968,37 @@ class DesktopAppService:
         cleaned_text = str(message_text).strip()
         if not cleaned_text:
             return ReplySuggestion(conversation_id=conversation_id, input_text=message_text, suggestion="", status="empty_input")
+        safety = self.safety_policy_engine.assess_input(cleaned_text)
+        if safety.need_human_review:
+            normalized_id = str(conversation_id).strip()
+            self.runtime_state_store.create_reply_job(
+                conversation_id=normalized_id,
+                trigger_event_ids=[
+                    RuntimeStateStore.message_signature(
+                        conversation_id=normalized_id,
+                        sender_name="customer",
+                        content=cleaned_text,
+                        source="desktop_suggest_safety",
+                    )
+                ],
+                input_text=cleaned_text,
+                draft_reply="",
+                status="PENDING_REVIEW",
+                risk_level=safety.risk_level,
+                need_human_review=True,
+                idempotency_key=RuntimeStateStore.message_signature(
+                    conversation_id=normalized_id,
+                    sender_name="customer",
+                    content=cleaned_text,
+                    source="desktop_suggest_safety_reply_job",
+                ),
+            )
+            return ReplySuggestion(
+                conversation_id=conversation_id,
+                input_text=message_text,
+                suggestion="",
+                status="pending_review",
+            )
         if self.reply_pipeline is None:
             suggestion = f"建议回复占位：{cleaned_text[:60]}"
             return ReplySuggestion(

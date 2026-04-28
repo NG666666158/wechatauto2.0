@@ -589,6 +589,46 @@ class GlobalAutoReplyTests(unittest.TestCase):
         self.assertEqual(len(sent_events), 1)
         self.assertTrue(sent_events[0]["confirmed"])
 
+    def test_send_reply_routes_high_risk_input_to_manual_review_without_sending(self) -> None:
+        from wechat_ai.storage.runtime_state import RuntimeStateStore
+
+        sent_messages: list[tuple[str, list[str]]] = []
+        generated: list[object] = []
+        logged_events: list[dict[str, object]] = []
+        db_path = TMP_ROOT / f"runtime_safety_{uuid4().hex}.sqlite3"
+        self.runtime.Messages = types.SimpleNamespace(
+            send_messages_to_friend=lambda friend, messages, close_weixin=False: sent_messages.append((friend, messages))
+        )
+        app = self.runtime.WeChatAIApp(
+            engine=types.SimpleNamespace(
+                context_limit=10,
+                generate_reply=lambda message: generated.append(message) or "reply",
+                event_logger=types.SimpleNamespace(
+                    log_event=lambda event_type, **fields: logged_events.append({"event_type": event_type, **fields})
+                ),
+            ),
+            fallback_reply="fallback",
+            mention_names=("me",),
+            identity_resolver=self.build_app().identity_resolver,
+            runtime_state_store=RuntimeStateStore(db_path),
+        )
+
+        result = app._send_reply(
+            session_name="Alice",
+            message_text="我要退款，价格也要重新确认",
+            contexts=["ctx-1"],
+            is_group=False,
+        )
+        jobs = app.runtime_state_store.list_reply_jobs(status="PENDING_REVIEW")
+
+        self.assertEqual(result, {"friend_replies": 0, "group_replies": 0, "errors": 0})
+        self.assertEqual(generated, [])
+        self.assertEqual(sent_messages, [])
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0]["risk_level"], "MEDIUM")
+        self.assertTrue(jobs[0]["need_human_review"])
+        self.assertIn("reply_review_required", [event["event_type"] for event in logged_events])
+
     def test_send_reply_skips_generation_when_stop_event_is_set(self) -> None:
         sent_messages: list[tuple[str, list[str]]] = []
         generated: list[object] = []
