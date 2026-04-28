@@ -57,6 +57,8 @@ async function assertApiClientContract() {
   const replyAuditReviewer: string | null | undefined = approvedReplyJob.data?.reviewed_by
   const replyAuditTime: string | null | undefined = approvedReplyJob.data?.reviewed_at
   const replyReasonCodes: ReplyJob["reason_codes"] = replyJobs.data?.[0]?.reason_codes
+  const replySendStatus: string | undefined = approvedReplyJob.data?.send_status
+  const replySendResult: ReplyJob["send_result"] = approvedReplyJob.data?.send_result
   const sendJobs: ApiResponse<SendJob[]> = await apiClient.listSendJobs("SEND_UNCERTAIN", 20)
   const sendAttempts: ApiResponse<SendAttempt[]> = await apiClient.listSendAttempts("send_001", 20)
   const uncertainSendJobs: ApiResponse<SendJob[]> = await apiClient.listUncertainSendJobs(20)
@@ -125,6 +127,8 @@ async function assertApiClientContract() {
     replyAuditReviewer,
     replyAuditTime,
     replyReasonCodes,
+    replySendStatus,
+    replySendResult,
     sendJobs,
     sendAttempts,
     uncertainSendJobs,

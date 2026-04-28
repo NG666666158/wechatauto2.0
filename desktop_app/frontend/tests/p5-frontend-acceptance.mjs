@@ -207,6 +207,20 @@ const checks = [
       )
     },
   },
+  {
+    name: "pending page renders approve send result feedback",
+    run: () => {
+      const source = read("app/pending/page.tsx")
+      return (
+        source.includes("ReplySendResult") &&
+        source.includes("approve_send_result") &&
+        source.includes("send_status") &&
+        source.includes("send_result") &&
+        source.includes("send_job_id") &&
+        source.includes("confirmed")
+      )
+    },
+  },
 ]
 
 const failures = checks.filter((check) => !check.run())

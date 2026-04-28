@@ -284,6 +284,7 @@ function ReplyJobCard({
       <ReplyRiskSummary job={job} />
       <MetaRow label="会话" value={job.conversation_id} />
       <ReplyReviewAudit job={job} />
+      <ReplySendResult job={job} />
       <TextBlock label="触发消息" value={job.input_text} />
       <TextBlock label="草稿回复" value={job.draft_reply || "暂无草稿内容"} strong />
       <ReplyJobActions job={job} busyTarget={busyTarget} onReplyAction={onReplyAction} />
@@ -329,6 +330,28 @@ function ReplyReviewAudit({ job }: { job: ReplyJob }) {
       {job.reviewed_by ? <MetaRow label="reviewed_by" value={job.reviewed_by} /> : null}
       {job.reviewed_at ? <MetaRow label="reviewed_at" value={formatDate(job.reviewed_at)} /> : null}
       {job.review_reason ? <MetaRow label="review_reason" value={job.review_reason} /> : null}
+    </div>
+  )
+}
+
+function ReplySendResult({ job }: { job: ReplyJob }) {
+  if (!job.send_status && !job.send_result) {
+    return null
+  }
+  const result = isRecord(job.send_result) ? job.send_result : {}
+  const status = String(job.send_status || result.status || "--")
+  const confirmed = typeof result.confirmed === "boolean" ? (result.confirmed ? "true" : "false") : ""
+  return (
+    <div className="mt-2 rounded-md border border-sky-100 bg-sky-50/70 px-3 py-2">
+      <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+        <span className="font-semibold text-sky-700">approve_send_result</span>
+        <span className="rounded bg-white px-2 py-0.5 font-semibold text-sky-700">{status}</span>
+      </div>
+      {result.send_job_id ? <MetaRow label="send_job_id" value={String(result.send_job_id)} /> : null}
+      {confirmed ? <MetaRow label="confirmed" value={confirmed} /> : null}
+      {result.reason_code ? <MetaRow label="reason_code" value={String(result.reason_code)} /> : null}
+      {result.reason ? <MetaRow label="reason" value={String(result.reason)} /> : null}
+      {result.text ? <TextBlock label="sent_text" value={String(result.text)} /> : null}
     </div>
   )
 }
@@ -665,6 +688,10 @@ function formatReasonCode(code: string) {
     HIGH_RISK_COMMITMENT: "high risk commitment",
   }
   return labels[code] ? `${code}: ${labels[code]}` : code
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 function formatDate(value: string | null | undefined) {
