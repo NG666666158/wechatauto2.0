@@ -336,7 +336,7 @@ class WeChatAIApp:
             mention_names=mention_names,
             send_confirmer=send_confirmer,
             enforce_trusted_knowledge_for_sending=str(
-                os.getenv("WECHATAUTO_ENFORCE_TRUSTED_KNOWLEDGE_FOR_SENDING", "1")
+                os.getenv("WECHATAUTO_ENFORCE_TRUSTED_KNOWLEDGE_FOR_SENDING", "0")
             ).strip().lower()
             not in {"0", "false", "no", "off"},
         )

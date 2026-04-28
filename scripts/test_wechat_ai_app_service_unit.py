@@ -538,7 +538,7 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
-    def test_untrusted_knowledge_suggestion_routes_to_manual_review(self) -> None:
+    def test_untrusted_knowledge_suggestion_keeps_low_risk_reply_ready(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 
         temp_dir = _fresh_dir(".tmp_app_service_untrusted_knowledge_suggest")
@@ -553,15 +553,11 @@ class DesktopAppServiceTests(TestCase):
             suggestion = service.suggest_reply("friend:alice", "请问支持试用吗？")
             jobs = service.runtime_state_store.list_reply_jobs(status="PENDING_REVIEW")
 
-            self.assertEqual(suggestion.status, "pending_review")
+            self.assertEqual(suggestion.status, "ready")
             self.assertEqual(suggestion.knowledge_trust_status, "fake")
             self.assertEqual(suggestion.knowledge_trust_reason, "fake_embedding_provider")
             self.assertEqual(suggestion.suggestion, "建议:请问支持试用吗？")
-            self.assertEqual(len(jobs), 1)
-            self.assertEqual(jobs[0]["draft_reply"], "建议:请问支持试用吗？")
-            self.assertEqual(jobs[0]["risk_level"], "MEDIUM")
-            self.assertTrue(jobs[0]["need_human_review"])
-            self.assertEqual(jobs[0]["reason_codes"], ["UNTRUSTED_KNOWLEDGE_CONTEXT", "fake_embedding_provider"])
+            self.assertEqual(jobs, [])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

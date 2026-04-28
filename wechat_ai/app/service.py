@@ -1152,7 +1152,6 @@ class DesktopAppService:
     def suggest_reply(self, conversation_id: str, message_text: str) -> ReplySuggestion:
         cleaned_text = str(message_text).strip()
         knowledge_trust = self._knowledge_embedding_trust_metadata()
-        requires_knowledge_review = self._requires_untrusted_knowledge_review(knowledge_trust)
         suggestion_trust = {
             "knowledge_trust_status": str(knowledge_trust["embedding_trust_status"]),
             "knowledge_trust_reason": str(knowledge_trust["embedding_trust_reason"]),
@@ -1202,15 +1201,6 @@ class DesktopAppService:
             )
         if self.reply_pipeline is None:
             suggestion = f"建议回复占位：{cleaned_text[:60]}"
-            if requires_knowledge_review:
-                self._create_untrusted_knowledge_reply_job(conversation_id, cleaned_text, suggestion, knowledge_trust)
-                return ReplySuggestion(
-                    conversation_id=conversation_id,
-                    input_text=message_text,
-                    suggestion=suggestion,
-                    status="pending_review",
-                    **suggestion_trust,
-                )
             return ReplySuggestion(
                 conversation_id=conversation_id,
                 input_text=message_text,
@@ -1233,15 +1223,6 @@ class DesktopAppService:
             conversation_id=conversation_id,
         )
         suggestion = str(self.reply_pipeline.generate_reply(message)).strip()
-        if requires_knowledge_review:
-            self._create_untrusted_knowledge_reply_job(conversation_id, cleaned_text, suggestion, knowledge_trust)
-            return ReplySuggestion(
-                conversation_id=conversation_id,
-                input_text=message_text,
-                suggestion=suggestion,
-                status="pending_review",
-                **suggestion_trust,
-            )
         return ReplySuggestion(
             conversation_id=conversation_id,
             input_text=message_text,
