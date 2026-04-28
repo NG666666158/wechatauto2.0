@@ -243,6 +243,25 @@ function BaseSettings({
   updatePrivacy: (patch: Partial<PrivacyPolicy>, successMessage?: string) => void
   setSensitiveReview: (nextValue: boolean) => void
 }) {
+  const businessIntentRule = settings.safety_policy.input_rules.find((rule) => rule.reason_code === "HIGH_RISK_INTENT")
+
+  function setBusinessIntentRule(nextValue: boolean) {
+    if (!businessIntentRule) {
+      return
+    }
+    updateSettings(
+      {
+        safety_policy: {
+          ...settings.safety_policy,
+          input_rules: settings.safety_policy.input_rules.map((rule) =>
+            rule.rule_id === businessIntentRule.rule_id ? { ...rule, enabled: nextValue } : rule,
+          ),
+        },
+      },
+      nextValue ? "安全业务规则已开启" : "安全业务规则已关闭",
+    )
+  }
+
   return (
     <>
       <SettingRow
@@ -292,6 +311,19 @@ function BaseSettings({
         title="敏感消息先审核"
         desc="涉及敏感内容的消息需人工审核后回复"
         right={<Switch checked={settings.sensitive_message_review} disabled={pending} onChange={setSensitiveReview} />}
+      />
+      <SettingRow
+        iconBg="bg-amber-500"
+        icon={<ShieldAlert className="h-5 w-5 text-white" />}
+        title="业务风险规则"
+        desc={`退款、价格、账号等输入触发人工审核；当前 ${businessIntentRule?.patterns.length ?? 0} 个默认关键词`}
+        right={
+          <Switch
+            checked={businessIntentRule?.enabled ?? false}
+            disabled={pending || !businessIntentRule}
+            onChange={setBusinessIntentRule}
+          />
+        }
       />
       <SettingRow
         iconBg="bg-slate-600"

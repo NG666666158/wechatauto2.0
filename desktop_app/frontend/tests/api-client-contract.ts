@@ -26,11 +26,17 @@ import type {
   SettingsPatch,
   WebKnowledgeBuildResult,
   WechatEnvironment,
+  RecentLogEvent,
 } from "@/lib/api"
 
 async function assertApiClientContract() {
   const dashboard: ApiResponse<DashboardSummary> = await apiClient.getDashboardSummary()
   const runtime: ApiResponse<RuntimeStatus> = await apiClient.getRuntimeStatus()
+  const recentErrorLogs: ApiResponse<RecentLogEvent[]> = await apiClient.getRecentLogs(5, {
+    only_errors: true,
+    event_type: "reply.error",
+    trace_id: "trace-error",
+  })
   const environment: ApiResponse<WechatEnvironment> = await apiClient.getWechatEnvironment()
   const started: ApiResponse<RuntimeAction> = await apiClient.startRuntime()
   const stopped: ApiResponse<RuntimeAction> = await apiClient.stopRuntime()
@@ -94,6 +100,39 @@ async function assertApiClientContract() {
   const embeddingProvider: string | null | undefined = knowledgeStatus.data?.embedding_provider
   const embeddingTrusted: boolean | null | undefined = knowledgeStatus.data?.embedding_trusted
   const knowledgeSearch: ApiResponse<KnowledgeSearchResult[]> = await apiClient.searchKnowledge("试用政策", 5)
+  const knowledgeSearchEvidence: KnowledgeSearchResult = {
+    chunk_id: "chunk_001",
+    text: "trial policy",
+    score: 0.91,
+    metadata: {
+      doc_id: "faq",
+      source: "faq.md",
+      chunk_index: "0",
+      retrieval_sources: "dense,keyword",
+      dense_score: 0.82,
+      keyword_score: 0.67,
+      match_terms: "trial,policy",
+    },
+    evidence: {
+      doc_id: "faq",
+      source: "faq.md",
+      chunk_index: "0",
+      retrieval_sources: ["dense", "keyword"],
+      dense_score: 0.82,
+      keyword_score: 0.67,
+      match_terms: ["trial", "policy"],
+    },
+    doc_id: "faq",
+    source: "faq.md",
+    chunk_index: "0",
+    retrieval_sources: ["dense", "keyword"],
+    dense_score: 0.82,
+    keyword_score: 0.67,
+    match_terms: ["trial", "policy"],
+  }
+  const knowledgeDenseScore: number | null | undefined = knowledgeSearch.data?.[0]?.dense_score
+  const knowledgeKeywordScore: number | null | undefined = knowledgeSearch.data?.[0]?.keyword_score
+  const knowledgeMatchTerms: string[] | undefined = knowledgeSearch.data?.[0]?.match_terms
   const knowledgeImport: ApiResponse<KnowledgeImportResult> = await apiClient.importKnowledgeFiles([
     "C:\\docs\\product.pdf",
   ])
@@ -109,6 +148,7 @@ async function assertApiClientContract() {
   return {
     dashboard,
     runtime,
+    recentErrorLogs,
     environment,
     started,
     stopped,
@@ -147,6 +187,10 @@ async function assertApiClientContract() {
     embeddingProvider,
     embeddingTrusted,
     knowledgeSearch,
+    knowledgeSearchEvidence,
+    knowledgeDenseScore,
+    knowledgeKeywordScore,
+    knowledgeMatchTerms,
     knowledgeImport,
     webKnowledge,
     patch,

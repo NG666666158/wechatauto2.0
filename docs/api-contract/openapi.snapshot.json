@@ -1741,10 +1741,71 @@
             "title": "Chunk Id",
             "type": "string"
           },
+          "chunk_index": {
+            "default": "",
+            "title": "Chunk Index",
+            "type": "string"
+          },
+          "dense_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dense Score"
+          },
+          "doc_id": {
+            "default": "",
+            "title": "Doc Id",
+            "type": "string"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "title": "Evidence",
+            "type": "object"
+          },
+          "keyword_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keyword Score"
+          },
+          "match_terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Match Terms",
+            "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "retrieval_sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Retrieval Sources",
+            "type": "array"
+          },
           "score": {
             "default": 0.0,
             "title": "Score",
             "type": "number"
+          },
+          "source": {
+            "default": "",
+            "title": "Source",
+            "type": "string"
           },
           "text": {
             "default": "",
@@ -2325,6 +2386,179 @@
         "title": "RuntimeStatusData",
         "type": "object"
       },
+      "SafetyPatternRuleData": {
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "match_type": {
+            "default": "keyword",
+            "title": "Match Type",
+            "type": "string"
+          },
+          "patterns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Patterns",
+            "type": "array"
+          },
+          "reason_code": {
+            "default": "",
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "risk_level": {
+            "default": "MEDIUM",
+            "title": "Risk Level",
+            "type": "string"
+          },
+          "rule_id": {
+            "default": "",
+            "title": "Rule Id",
+            "type": "string"
+          }
+        },
+        "title": "SafetyPatternRuleData",
+        "type": "object"
+      },
+      "SafetyPatternRulePatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "match_type": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Type"
+          },
+          "patterns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patterns"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "risk_level": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Level"
+          },
+          "rule_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Rule Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule_id"
+        ],
+        "title": "SafetyPatternRulePatchRequest",
+        "type": "object"
+      },
+      "SafetyPolicyConfigData": {
+        "properties": {
+          "input_rules": {
+            "items": {
+              "$ref": "#/components/schemas/SafetyPatternRuleData"
+            },
+            "title": "Input Rules",
+            "type": "array"
+          },
+          "output_rules": {
+            "items": {
+              "$ref": "#/components/schemas/SafetyPatternRuleData"
+            },
+            "title": "Output Rules",
+            "type": "array"
+          }
+        },
+        "title": "SafetyPolicyConfigData",
+        "type": "object"
+      },
+      "SafetyPolicyPatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "input_rules": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SafetyPatternRulePatchRequest"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Rules"
+          },
+          "output_rules": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SafetyPatternRulePatchRequest"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Rules"
+          }
+        },
+        "title": "SafetyPolicyPatchRequest",
+        "type": "object"
+      },
       "ScheduleBlockData": {
         "properties": {
           "day_of_week": {
@@ -2648,6 +2882,9 @@
             "title": "Run Silently",
             "type": "boolean"
           },
+          "safety_policy": {
+            "$ref": "#/components/schemas/SafetyPolicyConfigData"
+          },
           "schedule_blocks": {
             "items": {
               "$ref": "#/components/schemas/ScheduleBlockData"
@@ -2868,6 +3105,16 @@
               }
             ],
             "title": "Run Silently"
+          },
+          "safety_policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SafetyPolicyPatchRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "schedule_blocks": {
             "anyOf": [

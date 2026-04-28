@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from wechat_ai.safety import SafetyPolicyConfig, default_safety_policy_config
+
 
 @dataclass(slots=True)
 class WorkHours:
@@ -49,6 +51,7 @@ class SettingsSnapshot:
     request_timeout_seconds: float = 30.0
     retry_attempts: int = 2
     real_send_enabled: bool = False
+    safety_policy: SafetyPolicyConfig = field(default_factory=default_safety_policy_config)
 
 
 @dataclass(slots=True)

@@ -38,6 +38,28 @@ class FakeDesktopService:
             "paused_sessions": [],
             "whitelist": [],
             "blacklist": [],
+            "safety_policy": {
+                "input_rules": [
+                    {
+                        "rule_id": "business_intent_input",
+                        "enabled": True,
+                        "match_type": "keyword",
+                        "patterns": ["价格"],
+                        "reason_code": "HIGH_RISK_INTENT",
+                        "risk_level": "MEDIUM",
+                    }
+                ],
+                "output_rules": [
+                    {
+                        "rule_id": "business_commitment_output",
+                        "enabled": True,
+                        "match_type": "keyword",
+                        "patterns": ["价格"],
+                        "reason_code": "HIGH_RISK_COMMITMENT",
+                        "risk_level": "MEDIUM",
+                    }
+                ],
+            },
         }
         self.log_events: list[dict[str, object]] = [
             {
@@ -356,13 +378,44 @@ class FakeDesktopService:
             "imported_files": list(imported_files or []),
             "search_query": query,
             "retrieved_chunk_ids": ["chunk_001"],
-            "retrieved_chunks": [{"chunk_id": "chunk_001", "text": f"命中: {query}", "score": 0.9}],
+            "retrieved_chunks": [self.search_knowledge(query, limit=1)[0]],
             "knowledge_status": self.get_knowledge_status(),
             "web_build_status": "built",
         }
 
     def search_knowledge(self, query: str, *, limit: int = 3) -> list[dict[str, object]]:
-        return [{"chunk_id": "chunk_001", "text": f"命中: {query}", "score": 0.9}][:limit]
+        return [
+            {
+                "chunk_id": "chunk_001",
+                "text": f"命中: {query}",
+                "score": 0.9,
+                "metadata": {
+                    "doc_id": "faq",
+                    "source": "faq.md",
+                    "chunk_index": "0",
+                    "retrieval_sources": "dense,keyword",
+                    "dense_score": 0.82,
+                    "keyword_score": 0.67,
+                    "match_terms": "trial,policy",
+                },
+                "evidence": {
+                    "doc_id": "faq",
+                    "source": "faq.md",
+                    "chunk_index": "0",
+                    "retrieval_sources": ["dense", "keyword"],
+                    "dense_score": 0.82,
+                    "keyword_score": 0.67,
+                    "match_terms": ["trial", "policy"],
+                },
+                "doc_id": "faq",
+                "source": "faq.md",
+                "chunk_index": "0",
+                "retrieval_sources": ["dense", "keyword"],
+                "dense_score": 0.82,
+                "keyword_score": 0.67,
+                "match_terms": ["trial", "policy"],
+            }
+        ][:limit]
 
     def import_knowledge_files(self, file_paths: list[str]) -> dict[str, object]:
         return {"files": [{"file_name": Path(path).name, "status": "imported"} for path in file_paths], "index_rebuilt": True}
@@ -1112,6 +1165,24 @@ def test_frontend_dashboard_and_settings_endpoints_are_available() -> None:
     assert updated["data"]["auto_reply_enabled"] is False
 
 
+def test_settings_endpoint_round_trips_safety_policy() -> None:
+    from wechat_ai.server import create_app
+
+    service = FakeDesktopService()
+    client = TestClient(create_app(desktop_service=service))
+
+    settings = client.get("/api/v1/settings").json()
+    policy = settings["data"]["safety_policy"]
+    policy["input_rules"][0]["enabled"] = False
+
+    updated = client.patch("/api/v1/settings", json={"safety_policy": policy}).json()
+
+    assert settings["success"] is True
+    assert policy["input_rules"][0]["reason_code"] == "HIGH_RISK_INTENT"
+    assert updated["success"] is True
+    assert updated["data"]["safety_policy"]["input_rules"][0]["enabled"] is False
+
+
 def test_frontend_customer_identity_and_knowledge_endpoints_are_available() -> None:
     from wechat_ai.server import create_app
 
@@ -1132,6 +1203,15 @@ def test_frontend_customer_identity_and_knowledge_endpoints_are_available() -> N
     assert identity_updated["data"]["display_name"] == "新版身份"
     assert knowledge["data"]["ready"] is False
     assert search["data"][0]["chunk_id"] == "chunk_001"
+    assert search["data"][0]["metadata"]["retrieval_sources"] == "dense,keyword"
+    assert search["data"][0]["evidence"]["retrieval_sources"] == ["dense", "keyword"]
+    assert search["data"][0]["retrieval_sources"] == ["dense", "keyword"]
+    assert search["data"][0]["match_terms"] == ["trial", "policy"]
+    assert search["data"][0]["dense_score"] == 0.82
+    assert search["data"][0]["keyword_score"] == 0.67
+    assert search["data"][0]["doc_id"] == "faq"
+    assert search["data"][0]["source"] == "faq.md"
+    assert search["data"][0]["chunk_index"] == "0"
     assert imported["data"]["index_rebuilt"] is True
     assert web_build["data"]["status"] == "built"
 

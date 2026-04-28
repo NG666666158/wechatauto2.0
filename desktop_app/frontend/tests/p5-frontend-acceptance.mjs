@@ -59,14 +59,25 @@ const checks = [
         "searchKnowledge",
         "importKnowledgeFiles",
         "buildWebKnowledgeFromDocuments",
+        "getRecentLogs",
+        "RecentLogFilters",
+        "only_errors",
+        "event_type",
+        "trace_id",
       ].every((token) => source.includes(token))
     },
   },
   {
     name: "pages render backend-offline error states",
     run: () =>
-      ["app/page.tsx", "app/messages/page.tsx", "app/pending/page.tsx", "app/customers/page.tsx", "app/knowledge/page.tsx", "app/settings/page.tsx"]
-        .every((file) => read(file).includes("ErrorState")),
+      [
+        "app/page.tsx",
+        "app/messages/page.tsx",
+        "app/pending/page.tsx",
+        "app/customers/page.tsx",
+        "app/knowledge/page.tsx",
+        "app/settings/page.tsx",
+      ].every((file) => read(file).includes("ErrorState")),
   },
   {
     name: "pending page shows reply review and uncertain send queues",
@@ -88,11 +99,43 @@ const checks = [
         source.includes("unpause_conversation") &&
         source.includes("批准") &&
         source.includes("取消") &&
-        source.includes("标记已确认") &&
+        source.includes("确认已发") &&
+        source.includes("确认并恢复") &&
         source.includes("标记失败") &&
         source.includes("updateConversationControl") &&
         source.includes("SEND_UNCERTAIN") &&
         !source.includes("sendConversationReply")
+      )
+    },
+  },
+  {
+    name: "pending page filters uncertain send queue locally",
+    run: () => {
+      const source = read("app/pending/page.tsx")
+      return (
+        source.includes("SendUncertainFilter") &&
+        source.includes("filteredSendJobs") &&
+        source.includes("全部") &&
+        source.includes("仅未确认") &&
+        source.includes("仅有错误码") &&
+        source.includes("仅有截图证据") &&
+        source.includes("hasSendAttemptErrorCode") &&
+        source.includes("hasScreenshotEvidence")
+      )
+    },
+  },
+  {
+    name: "pending page renders recent send error logs panel",
+    run: () => {
+      const source = read("app/pending/page.tsx")
+      return (
+        source.includes("RecentErrorLogsPanel") &&
+        source.includes("apiClient.getRecentLogs(5") &&
+        source.includes("only_errors: true") &&
+        source.includes("最近错误日志") &&
+        source.includes("event_type") &&
+        source.includes("reason_code") &&
+        source.includes("trace_id")
       )
     },
   },
@@ -106,7 +149,9 @@ const checks = [
         source.includes("attempt_no") &&
         source.includes("error_code") &&
         source.includes("before_screenshot") &&
-        source.includes("after_screenshot")
+        source.includes("after_screenshot") &&
+        source.includes("无截图证据") &&
+        source.includes("EvidenceRows")
       )
     },
   },
@@ -141,11 +186,7 @@ const checks = [
     name: "pending page renders reply review audit fields",
     run: () => {
       const source = read("app/pending/page.tsx")
-      return (
-        source.includes("reviewed_by") &&
-        source.includes("reviewed_at") &&
-        source.includes("review_reason")
-      )
+      return source.includes("reviewed_by") && source.includes("reviewed_at") && source.includes("review_reason")
     },
   },
   {
@@ -170,10 +211,24 @@ const checks = [
     name: "knowledge page shows embedding provider trust status",
     run: () => {
       const source = read("app/knowledge/page.tsx")
+      return source.includes("embedding_provider") && source.includes("embedding_trusted") && source.includes("untrusted")
+    },
+  },
+  {
+    name: "knowledge page renders search evidence fields",
+    run: () => {
+      const source = read("app/knowledge/page.tsx")
+      const apiSource = read("lib/api.ts")
       return (
-        source.includes("embedding_provider") &&
-        source.includes("embedding_trusted") &&
-        source.includes("untrusted")
+        source.includes("retrieval_sources") &&
+        source.includes("match_terms") &&
+        source.includes("dense_score") &&
+        source.includes("keyword_score") &&
+        source.includes("doc_id") &&
+        source.includes("source") &&
+        apiSource.includes("evidence") &&
+        apiSource.includes("metadata") &&
+        apiSource.includes("retrieval_sources")
       )
     },
   },

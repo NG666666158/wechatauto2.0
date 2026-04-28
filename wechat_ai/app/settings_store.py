@@ -5,6 +5,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Mapping
 
+from wechat_ai.safety import SafetyPatternRule, SafetyPolicyConfig, default_safety_policy_config
+
 from .models import PrivacyPolicy, ScheduleBlock, SettingsSnapshot, WorkHours
 
 
@@ -37,6 +39,9 @@ class DesktopSettingsStore:
         privacy_payload = payload.get("privacy", {})
         if not isinstance(privacy_payload, Mapping):
             privacy_payload = {}
+        safety_policy_payload = payload.get("safety_policy", {})
+        if not isinstance(safety_policy_payload, Mapping):
+            safety_policy_payload = {}
         return SettingsSnapshot(
             auto_reply_enabled=bool(payload.get("auto_reply_enabled", True)),
             reply_style=str(payload.get("reply_style", "自然友好")),
@@ -77,6 +82,7 @@ class DesktopSettingsStore:
             request_timeout_seconds=max(float(payload.get("request_timeout_seconds", 30.0)), 1.0),
             retry_attempts=max(int(payload.get("retry_attempts", 2)), 0),
             real_send_enabled=bool(payload.get("real_send_enabled", False)),
+            safety_policy=_safety_policy(safety_policy_payload),
         )
 
     def _apply_patch(self, current: SettingsSnapshot, patch: Mapping[str, object]) -> SettingsSnapshot:
@@ -96,6 +102,8 @@ class DesktopSettingsStore:
                     if nested_key in merged_privacy:
                         merged_privacy[nested_key] = nested_value
                 payload["privacy"] = merged_privacy
+            elif key == "safety_policy" and isinstance(value, Mapping):
+                payload["safety_policy"] = value
             elif key in payload:
                 payload[key] = value
         return self._deserialize(payload)
@@ -105,3 +113,40 @@ def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _safety_policy(payload: Mapping[str, Any]) -> SafetyPolicyConfig:
+    defaults = default_safety_policy_config()
+    return SafetyPolicyConfig(
+        input_rules=_safety_rules(payload.get("input_rules"), defaults.input_rules),
+        output_rules=_safety_rules(payload.get("output_rules"), defaults.output_rules),
+    )
+
+
+def _safety_rules(value: object, defaults: list[SafetyPatternRule]) -> list[SafetyPatternRule]:
+    if not isinstance(value, list):
+        return defaults
+    rules: list[SafetyPatternRule] = []
+    defaults_by_id = {rule.rule_id: rule for rule in defaults}
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        rule_id = str(item.get("rule_id", "")).strip()
+        if not rule_id:
+            continue
+        default_rule = defaults_by_id.get(rule_id)
+        patterns_value = item.get("patterns", default_rule.patterns if default_rule else [])
+        patterns = _string_list(patterns_value)
+        if not patterns and default_rule:
+            patterns = list(default_rule.patterns)
+        rules.append(
+            SafetyPatternRule(
+                rule_id=rule_id,
+                enabled=bool(item.get("enabled", default_rule.enabled if default_rule else True)),
+                match_type=str(item.get("match_type", default_rule.match_type if default_rule else "keyword")),
+                patterns=patterns,
+                reason_code=str(item.get("reason_code", default_rule.reason_code if default_rule else "")),
+                risk_level=str(item.get("risk_level", default_rule.risk_level if default_rule else "MEDIUM")),
+            )
+        )
+    return rules or defaults

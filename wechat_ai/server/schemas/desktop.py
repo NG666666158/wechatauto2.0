@@ -51,6 +51,20 @@ class PrivacyPolicyData(BaseModel):
     max_recent_log_events: int = 100
 
 
+class SafetyPatternRuleData(BaseModel):
+    rule_id: str = ""
+    enabled: bool = True
+    match_type: str = "keyword"
+    patterns: list[str] = Field(default_factory=list)
+    reason_code: str = ""
+    risk_level: str = "MEDIUM"
+
+
+class SafetyPolicyConfigData(BaseModel):
+    input_rules: list[SafetyPatternRuleData] = Field(default_factory=list)
+    output_rules: list[SafetyPatternRuleData] = Field(default_factory=list)
+
+
 class SettingsData(BaseModel):
     auto_reply_enabled: bool = True
     reply_style: str = ""
@@ -72,6 +86,7 @@ class SettingsData(BaseModel):
     request_timeout_seconds: float = 30.0
     retry_attempts: int = 2
     real_send_enabled: bool = False
+    safety_policy: SafetyPolicyConfigData = Field(default_factory=SafetyPolicyConfigData)
 
 
 class LogsSummaryData(BaseModel):
@@ -174,6 +189,15 @@ class KnowledgeSearchResultData(BaseModel):
     chunk_id: str = ""
     text: str = ""
     score: float = 0.0
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    retrieval_sources: list[str] = Field(default_factory=list)
+    dense_score: float | None = None
+    keyword_score: float | None = None
+    match_terms: list[str] = Field(default_factory=list)
+    doc_id: str = ""
+    source: str = ""
+    chunk_index: str = ""
 
 
 class KnowledgeFileImportData(BaseModel):

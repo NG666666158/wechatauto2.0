@@ -213,6 +213,7 @@ export default function KnowledgePage() {
                       <span>{item.chunk_id || "未命名片段"}</span>
                       <span>相关度 {item.score.toFixed(2)}</span>
                     </div>
+                    <KnowledgeEvidence item={item} />
                     <p className="text-sm leading-relaxed text-slate-700">{item.text}</p>
                   </div>
                 ))}
@@ -225,6 +226,62 @@ export default function KnowledgePage() {
       </div>
     </AppShell>
   )
+}
+
+function KnowledgeEvidence({ item }: { item: KnowledgeSearchResult }) {
+  const retrieval_sources = item.retrieval_sources ?? []
+  const match_terms = item.match_terms ?? []
+  const dense_score = formatScore(item.dense_score)
+  const keyword_score = formatScore(item.keyword_score)
+  const doc_id = item.doc_id || textFromEvidence(item.evidence, "doc_id")
+  const source = item.source || textFromEvidence(item.evidence, "source")
+  const chunk_index = item.chunk_index || textFromEvidence(item.evidence, "chunk_index")
+
+  return (
+    <div className="mb-3 space-y-2 text-xs text-slate-500">
+      <div className="flex flex-wrap gap-1.5">
+        {retrieval_sources.length ? (
+          retrieval_sources.map((sourceName) => (
+            <span key={sourceName} className="rounded-md border border-blue-100 bg-blue-50 px-2 py-1 font-medium text-blue-700">
+              {sourceName}
+            </span>
+          ))
+        ) : (
+          <span className="rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-500">source unknown</span>
+        )}
+        {match_terms.map((term) => (
+          <span key={term} className="rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1 text-emerald-700">
+            {term}
+          </span>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <EvidenceCell label="dense_score" value={dense_score} />
+        <EvidenceCell label="keyword_score" value={keyword_score} />
+        <EvidenceCell label="doc_id" value={doc_id || "-"} />
+        <EvidenceCell label="chunk_index" value={chunk_index || "-"} />
+      </div>
+      {source ? <div className="truncate">source: {source}</div> : null}
+    </div>
+  )
+}
+
+function EvidenceCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-slate-100 bg-white px-2 py-1.5">
+      <div className="text-[10px] uppercase text-slate-400">{label}</div>
+      <div className="truncate font-medium text-slate-700">{value}</div>
+    </div>
+  )
+}
+
+function textFromEvidence(evidence: Record<string, unknown> | undefined, key: string) {
+  const value = evidence?.[key]
+  return typeof value === "string" ? value : ""
+}
+
+function formatScore(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(3) : "-"
 }
 
 function filePathFromDrop(file: File) {

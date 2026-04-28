@@ -286,7 +286,6 @@ class DesktopAppService:
         self.conversation_store_path = self.app_dir / "conversations.json"
         self.conversation_store = ConversationStore(self.conversation_store_path)
         self.runtime_state_store = RuntimeStateStore(self.app_dir / "runtime_state.sqlite3")
-        self.safety_policy_engine = SafetyPolicyEngine()
         self.settings_store = settings_store or DesktopSettingsStore(self.app_dir / "desktop_settings.json")
         self.daemon_controller = DaemonController(self.app_dir / "daemon_state.json")
         self.daemon_runner = daemon_runner or _SubprocessDaemonRunner()
@@ -331,6 +330,9 @@ class DesktopAppService:
 
     def update_settings(self, patch: Mapping[str, object]):
         return self.settings_store.update(patch)
+
+    def _safety_policy_engine(self) -> SafetyPolicyEngine:
+        return SafetyPolicyEngine(self.get_settings().safety_policy)
 
     def get_daemon_status(self) -> dict[str, object]:
         return self._normalized_daemon_status()
@@ -1029,7 +1031,7 @@ class DesktopAppService:
         if control["blacklisted"]:
             return _blocked_send("BLACKLISTED", "该会话在黑名单中。")
         if not skip_safety:
-            safety = self.safety_policy_engine.assess_output(str(text))
+            safety = self._safety_policy_engine().assess_output(str(text))
             if not safety.allowed_to_send:
                 return _blocked_send(
                     "SAFETY_REVIEW_REQUIRED",
@@ -1046,7 +1048,7 @@ class DesktopAppService:
         cleaned_text = str(message_text).strip()
         if not cleaned_text:
             return ReplySuggestion(conversation_id=conversation_id, input_text=message_text, suggestion="", status="empty_input")
-        safety = self.safety_policy_engine.assess_input(cleaned_text)
+        safety = self._safety_policy_engine().assess_input(cleaned_text)
         if safety.need_human_review:
             normalized_id = str(conversation_id).strip()
             self.runtime_state_store.create_reply_job(
@@ -1195,6 +1197,7 @@ class DesktopAppService:
                     if doc_id or chunk_index:
                         chunk_id = f"{doc_id}:{chunk_index}".strip(":")
             payload["chunk_id"] = chunk_id
+            payload.update(_build_knowledge_evidence(metadata if isinstance(metadata, dict) else {}))
             results.append(payload)
         return results
 
@@ -1539,6 +1542,50 @@ def _build_hybrid_retriever(index_path: Path) -> HybridRetriever:
         dense_retriever=LocalIndexRetriever(index_path=index_path, embeddings=FakeEmbeddings()),
         keyword_retriever=KeywordRetriever(index_path=index_path),
     )
+
+
+def _build_knowledge_evidence(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    retrieval_sources = _split_evidence_list(metadata.get("retrieval_sources"))
+    match_terms = _split_evidence_list(metadata.get("match_terms"))
+    dense_score = _optional_float(metadata.get("dense_score"))
+    keyword_score = _optional_float(metadata.get("keyword_score"))
+    evidence: dict[str, Any] = {
+        "metadata": dict(metadata),
+        "retrieval_sources": retrieval_sources,
+        "dense_score": dense_score,
+        "keyword_score": keyword_score,
+        "match_terms": match_terms,
+        "doc_id": str(metadata.get("doc_id") or "").strip(),
+        "source": str(metadata.get("source") or "").strip(),
+        "chunk_index": str(metadata.get("chunk_index") or "").strip(),
+    }
+    return {
+        "evidence": evidence,
+        "retrieval_sources": retrieval_sources,
+        "dense_score": dense_score,
+        "keyword_score": keyword_score,
+        "match_terms": match_terms,
+        "doc_id": evidence["doc_id"],
+        "source": evidence["source"],
+        "chunk_index": evidence["chunk_index"],
+    }
+
+
+def _split_evidence_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _windows_pid_exists(pid: int | None) -> bool:

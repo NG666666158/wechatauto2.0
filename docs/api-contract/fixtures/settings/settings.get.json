@@ -20,6 +20,10 @@
     "request_timeout_seconds": 30.0,
     "retry_attempts": 2,
     "run_silently": true,
+    "safety_policy": {
+      "input_rules": [],
+      "output_rules": []
+    },
     "schedule_blocks": [],
     "schedule_enabled": false,
     "sensitive_message_review": true,

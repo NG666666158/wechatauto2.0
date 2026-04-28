@@ -289,6 +289,77 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_settings_load_fills_default_safety_policy(self) -> None:
+        from wechat_ai.app.settings_store import DesktopSettingsStore
+
+        temp_dir = _fresh_dir(".tmp_app_service_safety_policy_defaults")
+        try:
+            store = DesktopSettingsStore(temp_dir / "desktop_settings.json")
+            store.update({"reply_style": "专业友好"})
+
+            settings = store.load()
+
+            self.assertTrue(settings.safety_policy.input_rules)
+            self.assertTrue(settings.safety_policy.output_rules)
+            self.assertIn(
+                "HIGH_RISK_INTENT",
+                [rule.reason_code for rule in settings.safety_policy.input_rules],
+            )
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_safety_policy_settings_round_trip(self) -> None:
+        from dataclasses import asdict, replace
+
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_safety_policy_roundtrip")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+            current = service.get_settings().safety_policy
+            current.input_rules = [
+                rule if rule.reason_code != "HIGH_RISK_INTENT" else replace(rule, enabled=False)
+                for rule in current.input_rules
+            ]
+
+            updated = service.update_settings({"safety_policy": asdict(current)})
+
+            self.assertFalse(
+                next(rule for rule in updated.safety_policy.input_rules if rule.reason_code == "HIGH_RISK_INTENT").enabled
+            )
+            self.assertFalse(
+                next(
+                    rule
+                    for rule in service.get_settings().safety_policy.input_rules
+                    if rule.reason_code == "HIGH_RISK_INTENT"
+                ).enabled
+            )
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_updated_safety_policy_affects_suggest_without_restart(self) -> None:
+        from dataclasses import asdict, replace
+
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_safety_policy_live")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+
+            pending = service.suggest_reply("friend:alice", "这个套餐价格还能优惠吗")
+            current = service.get_settings().safety_policy
+            current.input_rules = [
+                rule if rule.reason_code != "HIGH_RISK_INTENT" else replace(rule, enabled=False)
+                for rule in current.input_rules
+            ]
+            service.update_settings({"safety_policy": asdict(current)})
+            allowed = service.suggest_reply("friend:bob", "这个套餐价格还能优惠吗")
+
+            self.assertEqual(pending.status, "pending_review")
+            self.assertNotEqual(allowed.status, "pending_review")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_message_placeholders_are_structured(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 
@@ -1014,6 +1085,17 @@ class DesktopAppServiceTests(TestCase):
             self.assertEqual(len(results), 1)
             self.assertIn("退款说明", results[0]["text"])
             self.assertIn("metadata", results[0])
+            self.assertIn("evidence", results[0])
+            self.assertIn("retrieval_sources", results[0])
+            self.assertTrue(results[0]["retrieval_sources"])
+            self.assertIn("match_terms", results[0])
+            self.assertIsInstance(results[0]["match_terms"], list)
+            self.assertIn("doc_id", results[0])
+            self.assertIn("source", results[0])
+            self.assertIn("chunk_index", results[0])
+            self.assertIn("dense_score", results[0])
+            self.assertIn("keyword_score", results[0])
+            self.assertEqual(results[0]["metadata"]["doc_id"], results[0]["doc_id"])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -1031,6 +1113,8 @@ class DesktopAppServiceTests(TestCase):
             self.assertEqual(snapshot["imported_files"], [source.name])
             self.assertEqual(snapshot["search_query"], "试用政策")
             self.assertTrue(snapshot["retrieved_chunk_ids"])
+            self.assertIn("evidence", snapshot["retrieved_chunks"][0])
+            self.assertIn("retrieval_sources", snapshot["retrieved_chunks"][0])
             self.assertEqual(import_result["files"][0]["status"], "imported")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)

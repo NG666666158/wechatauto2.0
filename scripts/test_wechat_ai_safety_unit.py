@@ -58,6 +58,36 @@ class SafetyPolicyEngineTests(TestCase):
         self.assertTrue(decision.need_human_review)
         self.assertIn("SENSITIVE_INFORMATION", decision.reason_codes)
 
+    def test_default_policy_config_preserves_current_business_review_behavior(self) -> None:
+        from wechat_ai.safety import SafetyPolicyEngine, default_safety_policy_config
+
+        engine = SafetyPolicyEngine(default_safety_policy_config())
+
+        input_decision = engine.assess_input("这个套餐价格还能优惠吗")
+        output_decision = engine.assess_output("我们承诺给你价格优惠")
+
+        self.assertEqual(input_decision.risk_level, "MEDIUM")
+        self.assertIn("HIGH_RISK_INTENT", input_decision.reason_codes)
+        self.assertEqual(output_decision.risk_level, "MEDIUM")
+        self.assertIn("HIGH_RISK_COMMITMENT", output_decision.reason_codes)
+
+    def test_disabled_business_rule_does_not_route_input_to_review(self) -> None:
+        from dataclasses import replace
+
+        from wechat_ai.safety import SafetyPolicyEngine, default_safety_policy_config
+
+        config = default_safety_policy_config()
+        config.input_rules = [
+            rule if rule.reason_code != "HIGH_RISK_INTENT" else replace(rule, enabled=False)
+            for rule in config.input_rules
+        ]
+
+        decision = SafetyPolicyEngine(config).assess_input("这个套餐价格还能优惠吗")
+
+        self.assertTrue(decision.allowed_to_send)
+        self.assertFalse(decision.need_human_review)
+        self.assertEqual(decision.reason_codes, [])
+
     def test_desktop_send_reply_blocks_high_risk_manual_reply(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 

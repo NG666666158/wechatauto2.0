@@ -55,6 +55,20 @@ class ScheduleBlockPatchRequest(StrictRequestModel):
     enabled: bool | None = None
 
 
+class SafetyPatternRulePatchRequest(StrictRequestModel):
+    rule_id: str = Field(..., min_length=1, max_length=128)
+    enabled: bool | None = None
+    match_type: str | None = Field(None, max_length=16)
+    patterns: list[str] | None = Field(None, max_length=100)
+    reason_code: str | None = Field(None, max_length=64)
+    risk_level: str | None = Field(None, max_length=16)
+
+
+class SafetyPolicyPatchRequest(StrictRequestModel):
+    input_rules: list[SafetyPatternRulePatchRequest] | None = Field(None, max_length=50)
+    output_rules: list[SafetyPatternRulePatchRequest] | None = Field(None, max_length=50)
+
+
 class SettingsPatchRequest(StrictRequestModel):
     auto_reply_enabled: bool | None = None
     reply_style: str | None = Field(None, max_length=64)
@@ -76,6 +90,7 @@ class SettingsPatchRequest(StrictRequestModel):
     request_timeout_seconds: float | None = Field(None, ge=1, le=300)
     retry_attempts: int | None = Field(None, ge=0, le=10)
     real_send_enabled: bool | None = None
+    safety_policy: SafetyPolicyPatchRequest | None = None
 
 
 class ConversationControlPatchRequest(StrictRequestModel):

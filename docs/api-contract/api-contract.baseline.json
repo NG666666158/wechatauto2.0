@@ -753,7 +753,7 @@
       "/api/v1/errors/catalog"
     ]
   },
-  "schema_count": 81,
+  "schema_count": 85,
   "schemas": [
     "ApiErrorPayload",
     "ApiResponse_ConversationControlData_",
@@ -821,6 +821,10 @@
     "RuntimeBootstrapStartRequest",
     "RuntimeStartRequest",
     "RuntimeStatusData",
+    "SafetyPatternRuleData",
+    "SafetyPatternRulePatchRequest",
+    "SafetyPolicyConfigData",
+    "SafetyPolicyPatchRequest",
     "ScheduleBlockData",
     "ScheduleBlockPatchRequest",
     "SelfIdentityData",

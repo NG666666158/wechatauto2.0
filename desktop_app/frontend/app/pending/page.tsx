@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 import { AppShell } from "@/components/app-shell"
 import { EmptyState, ErrorState, LoadingState } from "@/components/api-state"
 import { apiClient } from "@/lib/api"
-import type { ConversationControlPatch, ReplyJob, SendAttempt, SendJob } from "@/lib/api"
+import type { ConversationControlPatch, RecentLogEvent, ReplyJob, SendAttempt, SendJob } from "@/lib/api"
 import { AlertTriangle, Bot, Check, CheckCircle2, Hand, Pause, RefreshCw, ShieldAlert, X } from "lucide-react"
 
 type ActionTarget = {
@@ -25,10 +25,21 @@ type SendActionTarget = {
   unpauseConversation?: boolean
 }
 
+type SendUncertainFilter = "all" | "unconfirmed" | "error_code" | "screenshot"
+
+const SEND_FILTERS: Array<{ value: SendUncertainFilter; label: string }> = [
+  { value: "all", label: "全部" },
+  { value: "unconfirmed", label: "仅未确认" },
+  { value: "error_code", label: "仅有错误码" },
+  { value: "screenshot", label: "仅有截图证据" },
+]
+
 export default function PendingPage() {
   const [replyJobs, setReplyJobs] = useState<ReplyJob[]>([])
   const [sendJobs, setSendJobs] = useState<SendJob[]>([])
   const [attemptsBySendJob, setAttemptsBySendJob] = useState<Record<string, SendAttempt[]>>({})
+  const [recentErrorLogs, setRecentErrorLogs] = useState<RecentLogEvent[]>([])
+  const [sendFilter, setSendFilter] = useState<SendUncertainFilter>("all")
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState("")
@@ -43,9 +54,10 @@ export default function PendingPage() {
     }
     setError("")
     try {
-      const [replies, uncertainSends] = await Promise.all([
+      const [replies, uncertainSends, recentLogs] = await Promise.all([
         apiClient.listReplyJobs(undefined, 50),
         apiClient.listUncertainSendJobs(50),
+        apiClient.getRecentLogs(5, { only_errors: true }),
       ])
       if (!replies.success || !replies.data) {
         setError(replies.error ? `${replies.error.code}: ${replies.error.message}` : "待审核回复加载失败")
@@ -57,6 +69,8 @@ export default function PendingPage() {
       }
       setReplyJobs(replies.data)
       setSendJobs(uncertainSends.data)
+      setRecentErrorLogs(recentLogs.success && recentLogs.data ? recentLogs.data : [])
+
       const attemptPairs = await Promise.all(
         uncertainSends.data.map(async (job) => {
           const attempts = await apiClient.listSendAttempts(job.send_job_id, 10)
@@ -76,11 +90,23 @@ export default function PendingPage() {
     void loadPending()
   }, [])
 
+  const filteredSendJobs = useMemo(
+    () =>
+      sendJobs.filter((job) => {
+        const attempts = attemptsBySendJob[job.send_job_id] ?? []
+        if (sendFilter === "unconfirmed") return isUnconfirmedSendJob(job)
+        if (sendFilter === "error_code") return hasSendAttemptErrorCode(attempts)
+        if (sendFilter === "screenshot") return hasScreenshotEvidence(job, attempts)
+        return true
+      }),
+    [attemptsBySendJob, sendFilter, sendJobs],
+  )
+
   const stats = useMemo(
     () => [
       { label: "待审核回复", value: replyJobs.length, tone: "text-blue-600" },
       { label: "发送不确定", value: sendJobs.length, tone: "text-rose-600" },
-      { label: "需人工检查", value: replyJobs.length + sendJobs.length, tone: "text-amber-600" },
+      { label: "人工检查", value: replyJobs.length + sendJobs.length, tone: "text-amber-600" },
     ],
     [replyJobs.length, sendJobs.length],
   )
@@ -155,7 +181,7 @@ export default function PendingPage() {
       await loadPending({ quiet: true })
       setNotice(
         resolution === "confirmed"
-          ? `已标记 SendJob ${sendJobId} 为已确认${unpauseConversation ? "，并恢复会话" : ""}`
+          ? `已标记 SendJob ${sendJobId} 为确认已发${unpauseConversation ? "，并恢复会话" : ""}`
           : `已标记 SendJob ${sendJobId} 为失败`,
       )
     } catch (err) {
@@ -218,8 +244,12 @@ export default function PendingPage() {
               subtitle="SEND_UNCERTAIN"
               icon={<ShieldAlert className="h-4 w-4 text-rose-500" />}
               emptyTitle="暂无发送不确定记录"
+              headerExtra={
+                <SendFilterTabs value={sendFilter} onChange={setSendFilter} />
+              }
             >
-              {sendJobs.map((job) => (
+              <RecentErrorLogsPanel logs={recentErrorLogs} />
+              {filteredSendJobs.map((job) => (
                 <SendJobCard
                   key={job.send_job_id}
                   job={job}
@@ -242,28 +272,83 @@ function QueuePanel({
   subtitle,
   icon,
   emptyTitle,
+  headerExtra,
   children,
 }: {
   title: string
   subtitle: string
   icon: ReactNode
   emptyTitle: string
+  headerExtra?: ReactNode
   children: ReactNode
 }) {
-  const hasChildren = Array.isArray(children) ? children.length > 0 : Boolean(children)
+  const childArray = Array.isArray(children) ? children.flat().filter(Boolean) : children ? [children] : []
+  const hasChildren = childArray.length > 0
   return (
     <section className="flex min-h-0 flex-col rounded-xl border border-slate-200 bg-white">
-      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-        <div className="flex items-center gap-2">
-          {icon}
-          <h2 className="text-[15px] font-semibold text-slate-800">{title}</h2>
+      <div className="border-b border-slate-100 px-5 py-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            {icon}
+            <h2 className="text-[15px] font-semibold text-slate-800">{title}</h2>
+          </div>
+          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">{subtitle}</span>
         </div>
-        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">{subtitle}</span>
+        {headerExtra ? <div className="mt-3">{headerExtra}</div> : null}
       </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         {hasChildren ? children : <EmptyState title={emptyTitle}>当前队列已经清空。</EmptyState>}
       </div>
     </section>
+  )
+}
+
+function SendFilterTabs({
+  value,
+  onChange,
+}: {
+  value: SendUncertainFilter
+  onChange: (value: SendUncertainFilter) => void
+}) {
+  return (
+    <div className="grid grid-cols-4 gap-1 rounded-lg bg-slate-100 p-1">
+      {SEND_FILTERS.map((item) => (
+        <button
+          key={item.value}
+          type="button"
+          onClick={() => onChange(item.value)}
+          className={`h-8 rounded-md px-2 text-xs font-semibold transition ${
+            value === item.value ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function RecentErrorLogsPanel({ logs }: { logs: RecentLogEvent[] }) {
+  return (
+    <div className="rounded-lg border border-amber-100 bg-amber-50/60 p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-amber-800">
+        <AlertTriangle className="h-3.5 w-3.5" />
+        最近错误日志
+      </div>
+      {logs.length ? (
+        <div className="space-y-2">
+          {logs.map((log, index) => (
+            <div key={`${log.trace_id ?? "trace"}:${log.event_type ?? "event"}:${index}`} className="rounded border border-amber-100 bg-white px-2 py-2">
+              <MetaRow label="event_type" value={stringify(log.event_type)} />
+              <MetaRow label="reason_code" value={stringify(log.reason_code)} />
+              <MetaRow label="trace_id" value={stringify(log.trace_id)} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-xs text-amber-700">暂无最近错误日志。</div>
+      )}
+    </div>
   )
 }
 
@@ -322,9 +407,7 @@ function ReplyRiskSummary({ job }: { job: ReplyJob }) {
 }
 
 function ReplyReviewAudit({ job }: { job: ReplyJob }) {
-  if (!job.reviewed_by && !job.reviewed_at && !job.review_reason) {
-    return null
-  }
+  if (!job.reviewed_by && !job.reviewed_at && !job.review_reason) return null
   return (
     <div className="mt-2 rounded-md bg-white px-3 py-2">
       {job.reviewed_by ? <MetaRow label="reviewed_by" value={job.reviewed_by} /> : null}
@@ -335,9 +418,7 @@ function ReplyReviewAudit({ job }: { job: ReplyJob }) {
 }
 
 function ReplySendResult({ job }: { job: ReplyJob }) {
-  if (!job.send_status && !job.send_result) {
-    return null
-  }
+  if (!job.send_status && !job.send_result) return null
   const result = isRecord(job.send_result) ? job.send_result : {}
   const status = String(job.send_status || result.status || "--")
   const confirmed = typeof result.confirmed === "boolean" ? (result.confirmed ? "true" : "false") : ""
@@ -370,6 +451,7 @@ function SendJobCard({
   onResolve: (target: SendActionTarget) => void
 }) {
   const evidence = formatConfirmationEvidence(job)
+  const screenshotRows = collectScreenshotEvidence(job)
 
   return (
     <article className="rounded-lg border border-rose-100 bg-rose-50/40 p-4">
@@ -387,11 +469,12 @@ function SendJobCard({
           )}
         </div>
       ) : null}
+      <EvidenceRows rows={screenshotRows} />
       <TextBlock label="发送内容" value={job.content} strong />
       <SendAttemptList attempts={attempts} />
       <div className="mt-3 flex items-start gap-2 rounded-md bg-white px-3 py-2 text-xs text-amber-700">
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <span>该记录不会在此页面重发，请先人工核对微信窗口中的真实发送状态。</span>
+        <span>此页面不会重发消息。请先人工核对微信窗口中的真实发送状态。</span>
       </div>
       <SendJobActions job={job} busyTarget={busyTarget} onResolve={onResolve} />
       <ControlActions conversationId={job.conversation_id} busyTarget={busyTarget} onControl={onControl} />
@@ -400,9 +483,7 @@ function SendJobCard({
 }
 
 function SendAttemptList({ attempts }: { attempts: SendAttempt[] }) {
-  if (!attempts.length) {
-    return null
-  }
+  if (!attempts.length) return null
   return (
     <div className="mt-3 rounded-md bg-white px-3 py-2">
       <div className="mb-2 text-xs font-semibold text-slate-500">send_attempts</div>
@@ -417,11 +498,29 @@ function SendAttemptList({ attempts }: { attempts: SendAttempt[] }) {
             </div>
             {attempt.error_code ? <MetaRow label="error_code" value={attempt.error_code} /> : null}
             {attempt.error_message ? <MetaRow label="error_message" value={attempt.error_message} /> : null}
-            {attempt.before_screenshot ? <MetaRow label="before_screenshot" value={attempt.before_screenshot} /> : null}
-            {attempt.after_screenshot ? <MetaRow label="after_screenshot" value={attempt.after_screenshot} /> : null}
+            <EvidenceRows rows={collectAttemptScreenshotEvidence(attempt)} compact />
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function EvidenceRows({ rows, compact = false }: { rows: EvidenceRow[]; compact?: boolean }) {
+  return (
+    <div className={`${compact ? "mt-2" : "mt-3"} rounded-md bg-white px-3 py-2`}>
+      <div className="mb-2 text-xs font-semibold text-slate-500">截图证据</div>
+      {rows.length ? (
+        <div className="space-y-2">
+          {rows.map((row) => (
+            <div key={row.label} className="rounded border border-slate-100 bg-slate-50 px-2 py-2">
+              <MetaRow label={row.label} value={row.path} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-xs text-slate-400">无截图证据</div>
+      )}
     </div>
   )
 }
@@ -488,13 +587,11 @@ function SendJobActions({
         className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 text-xs font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300"
       >
         <CheckCircle2 className="h-3.5 w-3.5" />
-        {busyTarget === confirmedKey ? "处理中" : "标记已确认"}
+        {busyTarget === confirmedKey ? "处理中" : "确认已发"}
       </button>
       <button
         disabled={busyTarget === confirmedRestoreKey}
-        onClick={() =>
-          onResolve({ sendJobId: job.send_job_id, resolution: "confirmed", unpauseConversation: true })
-        }
+        onClick={() => onResolve({ sendJobId: job.send_job_id, resolution: "confirmed", unpauseConversation: true })}
         className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-sky-500 px-3 text-xs font-medium text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:bg-slate-300"
       >
         <CheckCircle2 className="h-3.5 w-3.5" />
@@ -522,15 +619,17 @@ type ConfirmationEvidence = {
   }>
 }
 
+type EvidenceRow = {
+  label: "before_screenshot" | "after_screenshot"
+  path: string
+}
+
 function formatConfirmationEvidence(job: SendJob): ConfirmationEvidence {
   const value = job.confirmation_result
   const summary = formatConfirmationResult(value)
-  if (!value || typeof value === "string") {
-    return { summary, fields: [] }
-  }
-  const nested = typeof value.confirmation === "object" && value.confirmation !== null && !Array.isArray(value.confirmation)
-    ? (value.confirmation as Record<string, unknown>)
-    : {}
+  if (!value || typeof value === "string") return { summary, fields: [] }
+
+  const nested = isRecord(value.confirmation) ? value.confirmation : {}
   const source = {
     ...nested,
     ...value,
@@ -543,8 +642,6 @@ function formatConfirmationEvidence(job: SendJob): ConfirmationEvidence {
     evidenceField(source, "resolution", "resolution"),
     evidenceField(source, "visible_messages", "visible_messages", true),
     evidenceField(source, "matched_text", "matched_text", true),
-    evidenceField(source, "before_screenshot", "before_screenshot"),
-    evidenceField(source, "after_screenshot", "after_screenshot"),
   ].filter((item): item is ConfirmationEvidence["fields"][number] => Boolean(item))
 
   return {
@@ -564,13 +661,45 @@ function evidenceField(
   return value ? { key, label, value, multiline } : null
 }
 
+function collectScreenshotEvidence(job: SendJob): EvidenceRow[] {
+  const value = isRecord(job.confirmation_result) ? job.confirmation_result : {}
+  const nested = isRecord(value.confirmation) ? value.confirmation : {}
+  return [
+    screenshotRow("before_screenshot", value.before_screenshot ?? nested.before_screenshot ?? job.before_screenshot),
+    screenshotRow("after_screenshot", value.after_screenshot ?? nested.after_screenshot ?? job.after_screenshot),
+  ].filter((row): row is EvidenceRow => Boolean(row))
+}
+
+function collectAttemptScreenshotEvidence(attempt: SendAttempt): EvidenceRow[] {
+  return [
+    screenshotRow("before_screenshot", attempt.before_screenshot),
+    screenshotRow("after_screenshot", attempt.after_screenshot),
+  ].filter((row): row is EvidenceRow => Boolean(row))
+}
+
+function screenshotRow(label: EvidenceRow["label"], value: unknown): EvidenceRow | null {
+  const path = formatEvidenceValue(value)
+  return path ? { label, path } : null
+}
+
+function hasScreenshotEvidence(job: SendJob, attempts: SendAttempt[]) {
+  return collectScreenshotEvidence(job).length > 0 || attempts.some((attempt) => collectAttemptScreenshotEvidence(attempt).length > 0)
+}
+
+function hasSendAttemptErrorCode(attempts: SendAttempt[]) {
+  return attempts.some((attempt) => Boolean(attempt.error_code))
+}
+
+function isUnconfirmedSendJob(job: SendJob) {
+  const status = String(job.status || "").toUpperCase()
+  return status === "SEND_UNCERTAIN" || status === "UNCERTAIN" || status === "PENDING" || !job.confirmation_result
+}
+
 function formatEvidenceValue(value: unknown): string {
   if (value === null || value === undefined) return ""
   if (typeof value === "string") return value
   if (typeof value === "number" || typeof value === "boolean") return String(value)
-  if (Array.isArray(value)) {
-    return value.map((item) => formatEvidenceValue(item)).filter(Boolean).join(" / ")
-  }
+  if (Array.isArray(value)) return value.map((item) => formatEvidenceValue(item)).filter(Boolean).join(" / ")
   try {
     return JSON.stringify(value)
   } catch {
@@ -579,12 +708,8 @@ function formatEvidenceValue(value: unknown): string {
 }
 
 function formatConfirmationResult(value: SendJob["confirmation_result"]) {
-  if (!value) {
-    return "待人工检查"
-  }
-  if (typeof value === "string") {
-    return value
-  }
+  if (!value) return "待人工检查"
+  if (typeof value === "string") return value
   return JSON.stringify(value)
 }
 
@@ -661,17 +786,13 @@ function normalizeRiskLevel(value: string | null | undefined) {
 }
 
 function normalizeReasonCodes(value: ReplyJob["reason_codes"]) {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item).trim()).filter(Boolean)
-  }
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean)
   if (typeof value === "string") {
     const trimmed = value.trim()
     if (!trimmed) return []
     try {
       const parsed = JSON.parse(trimmed)
-      if (Array.isArray(parsed)) {
-        return parsed.map((item) => String(item).trim()).filter(Boolean)
-      }
+      if (Array.isArray(parsed)) return parsed.map((item) => String(item).trim()).filter(Boolean)
     } catch {
       return trimmed.split(",").map((item) => item.trim()).filter(Boolean)
     }
@@ -692,6 +813,10 @@ function formatReasonCode(code: string) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function stringify(value: unknown) {
+  return value === null || value === undefined || value === "" ? "--" : String(value)
 }
 
 function formatDate(value: string | null | undefined) {

@@ -79,6 +79,15 @@ export type KnowledgeSearchResult = {
   chunk_id: string
   text: string
   score: number
+  metadata?: Record<string, unknown>
+  evidence?: Record<string, unknown>
+  retrieval_sources?: string[]
+  dense_score?: number | null
+  keyword_score?: number | null
+  match_terms?: string[]
+  doc_id?: string
+  source?: string
+  chunk_index?: string
 }
 
 export type KnowledgeFileImport = {
@@ -128,6 +137,12 @@ export type RecentLogEvent = {
   [key: string]: unknown
 }
 
+export type RecentLogFilters = {
+  only_errors?: boolean
+  event_type?: string
+  trace_id?: string
+}
+
 export type WorkHours = {
   enabled: boolean
   start: string
@@ -139,6 +154,20 @@ export type PrivacyPolicy = {
   log_retention_days: number
   memory_retention_days: number
   max_recent_log_events: number
+}
+
+export type SafetyPatternRule = {
+  rule_id: string
+  enabled: boolean
+  match_type: string
+  patterns: string[]
+  reason_code: string
+  risk_level: string
+}
+
+export type SafetyPolicyConfig = {
+  input_rules: SafetyPatternRule[]
+  output_rules: SafetyPatternRule[]
 }
 
 export type Settings = {
@@ -168,6 +197,7 @@ export type Settings = {
   request_timeout_seconds: number
   retry_attempts: number
   real_send_enabled: boolean
+  safety_policy: SafetyPolicyConfig
 }
 
 export type SettingsPatch = Partial<
@@ -193,6 +223,7 @@ export type SettingsPatch = Partial<
     | "request_timeout_seconds"
     | "retry_attempts"
     | "real_send_enabled"
+    | "safety_policy"
   >
 >
 
@@ -402,7 +433,7 @@ function patch<T>(path: string, body: unknown) {
   })
 }
 
-function withQuery(path: string, params: Record<string, string | number | undefined>) {
+function withQuery(path: string, params: Record<string, string | number | boolean | undefined>) {
   const query = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) {
@@ -417,7 +448,8 @@ export const apiClient = {
   getDashboardSummary: () => request<DashboardSummary>("/dashboard/summary"),
   getRuntimeStatus: () => request<RuntimeStatus>("/runtime/status"),
   getLogsSummary: (limit = 20) => request<LogsSummary>(`/logs/summary?limit=${limit}`),
-  getRecentLogs: (limit = 5) => request<RecentLogEvent[]>(`/logs/recent?limit=${limit}`),
+  getRecentLogs: (limit = 5, filters: RecentLogFilters = {}) =>
+    request<RecentLogEvent[]>(withQuery("/logs/recent", { limit, ...filters })),
   getWechatEnvironment: () => request<WechatEnvironment>("/environment/wechat"),
   startRuntime: () =>
     post<RuntimeAction>("/runtime/bootstrap-start", STRICT_BOOTSTRAP_PAYLOAD),
