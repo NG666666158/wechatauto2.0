@@ -902,6 +902,7 @@ class WeChatAIApp:
                 status="PENDING_REVIEW",
                 risk_level=safety.risk_level,
                 need_human_review=True,
+                reason_codes=safety.reason_codes,
             )
             self._log_event(
                 "reply_review_required",

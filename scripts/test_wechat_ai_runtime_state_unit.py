@@ -35,6 +35,7 @@ class RuntimeStateStoreTests(TestCase):
             self.assertEqual(columns["review_reason"], "TEXT")
             self.assertEqual(columns["reviewed_by"], "TEXT")
             self.assertEqual(columns["reviewed_at"], "TEXT")
+            self.assertEqual(columns["reason_codes"], "TEXT")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -73,6 +74,29 @@ class RuntimeStateStoreTests(TestCase):
             self.assertIn("review_reason", columns)
             self.assertIn("reviewed_by", columns)
             self.assertIn("reviewed_at", columns)
+            self.assertIn("reason_codes", columns)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_reply_job_reason_codes_round_trip_as_list(self) -> None:
+        from wechat_ai.storage.runtime_state import RuntimeStateStore
+
+        temp_dir = _fresh_dir(".tmp_runtime_state_reply_reason_codes")
+        try:
+            store = RuntimeStateStore(temp_dir / "runtime_state.sqlite3")
+
+            reply = store.create_reply_job(
+                conversation_id="friend:Alice",
+                trigger_event_ids=["event-1"],
+                input_text="refund",
+                draft_reply="",
+                status="PENDING_REVIEW",
+                risk_level="MEDIUM",
+                need_human_review=True,
+                reason_codes=["HIGH_RISK_INTENT", "PROMPT_INJECTION"],
+            )
+
+            self.assertEqual(reply["reason_codes"], ["HIGH_RISK_INTENT", "PROMPT_INJECTION"])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

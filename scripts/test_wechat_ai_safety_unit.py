@@ -88,6 +88,7 @@ class SafetyPolicyEngineTests(TestCase):
             self.assertEqual(jobs[0]["conversation_id"], "friend:alice")
             self.assertEqual(jobs[0]["risk_level"], "MEDIUM")
             self.assertTrue(jobs[0]["need_human_review"])
+            self.assertEqual(jobs[0]["reason_codes"], ["HIGH_RISK_INTENT"])
             self.assertEqual(jobs[0]["draft_reply"], "")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)

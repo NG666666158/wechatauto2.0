@@ -84,10 +84,12 @@ class RuntimeStateStore:
         status: str = "CREATED",
         risk_level: str = "LOW",
         need_human_review: bool = False,
+        reason_codes: Iterable[str] | None = None,
         context_snapshot_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         event_ids = [str(value).strip() for value in trigger_event_ids if str(value).strip()]
+        safe_reason_codes = [str(value).strip() for value in (reason_codes or []) if str(value).strip()]
         safe_key = idempotency_key or self.reply_idempotency_key(conversation_id, event_ids)
         now = utc_timestamp()
         with self._connect() as conn:
@@ -100,8 +102,8 @@ class RuntimeStateStore:
                 INSERT INTO reply_jobs (
                     reply_job_id, conversation_id, trigger_event_ids, input_text,
                     context_snapshot_id, status, draft_reply, risk_level,
-                    need_human_review, idempotency_key, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    need_human_review, reason_codes, idempotency_key, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     reply_job_id,
@@ -113,6 +115,7 @@ class RuntimeStateStore:
                     draft_reply,
                     str(risk_level).strip() or "LOW",
                     1 if need_human_review else 0,
+                    _json_dumps(safe_reason_codes),
                     safe_key,
                     now,
                     now,
@@ -487,6 +490,7 @@ class RuntimeStateStore:
                     draft_reply TEXT,
                     risk_level TEXT NOT NULL DEFAULT 'LOW',
                     need_human_review INTEGER NOT NULL DEFAULT 0,
+                    reason_codes TEXT NOT NULL DEFAULT '[]',
                     idempotency_key TEXT NOT NULL,
                     review_reason TEXT,
                     reviewed_by TEXT,
@@ -538,6 +542,7 @@ class RuntimeStateStore:
                     "review_reason": "TEXT",
                     "reviewed_by": "TEXT",
                     "reviewed_at": "TEXT",
+                    "reason_codes": "TEXT NOT NULL DEFAULT '[]'",
                 },
             )
 
@@ -566,7 +571,7 @@ class RuntimeStateStore:
         if row is None:
             return {}
         payload = dict(row)
-        for key in ("trigger_event_ids", "ocr_raw", "confirmation_result"):
+        for key in ("trigger_event_ids", "ocr_raw", "confirmation_result", "reason_codes"):
             if key in payload and isinstance(payload[key], str) and payload[key]:
                 try:
                     payload[key] = json.loads(payload[key])

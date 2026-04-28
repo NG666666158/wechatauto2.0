@@ -986,6 +986,7 @@ class DesktopAppService:
                 status="PENDING_REVIEW",
                 risk_level=safety.risk_level,
                 need_human_review=True,
+                reason_codes=safety.reason_codes,
                 idempotency_key=RuntimeStateStore.message_signature(
                     conversation_id=normalized_id,
                     sender_name="customer",

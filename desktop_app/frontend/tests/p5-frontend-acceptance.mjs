@@ -78,6 +78,9 @@ const checks = [
         source.includes("listSendAttempts") &&
         source.includes("approveReplyJob") &&
         source.includes("cancelReplyJob") &&
+        source.includes("ReplyRiskSummary") &&
+        source.includes("reason_codes") &&
+        source.includes("formatReasonCode") &&
         source.includes("resolveSendJob") &&
         source.includes("unpauseConversation") &&
         source.includes("unpause_conversation") &&

@@ -247,6 +247,7 @@ export type ReplyJob = {
   draft_reply?: string | null
   risk_level?: string
   need_human_review?: boolean | number
+  reason_codes?: string[] | string | null
   idempotency_key?: string
   created_at?: string | null
   updated_at?: string | null

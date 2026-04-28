@@ -276,14 +276,42 @@ function ReplyJobCard({
   return (
     <article className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
       <JobHeader id={job.reply_job_id} status={job.status} time={job.updated_at ?? job.created_at} />
+      <ReplyRiskSummary job={job} />
       <MetaRow label="会话" value={job.conversation_id} />
-      <MetaRow label="风险" value={job.risk_level || "LOW"} />
       <ReplyReviewAudit job={job} />
       <TextBlock label="触发消息" value={job.input_text} />
       <TextBlock label="草稿回复" value={job.draft_reply || "暂无草稿内容"} strong />
       <ReplyJobActions job={job} busyTarget={busyTarget} onReplyAction={onReplyAction} />
       <ControlActions conversationId={job.conversation_id} busyTarget={busyTarget} onControl={onControl} />
     </article>
+  )
+}
+
+function ReplyRiskSummary({ job }: { job: ReplyJob }) {
+  const riskLevel = normalizeRiskLevel(job.risk_level)
+  const reasonCodes = normalizeReasonCodes(job.reason_codes)
+  const riskClass = riskLevel === "HIGH"
+    ? "border-rose-200 bg-rose-50 text-rose-700"
+    : riskLevel === "MEDIUM"
+      ? "border-amber-200 bg-amber-50 text-amber-700"
+      : "border-emerald-200 bg-emerald-50 text-emerald-700"
+
+  return (
+    <div className="mt-2 rounded-md bg-white px-3 py-2">
+      <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+        <span className="text-slate-500">risk_level</span>
+        <span className={`rounded border px-2 py-0.5 font-semibold ${riskClass}`}>{riskLevel}</span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {reasonCodes.length ? reasonCodes.map((code) => (
+          <span key={code} className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
+            {formatReasonCode(code)}
+          </span>
+        )) : (
+          <span className="text-xs text-slate-400">reason_codes: --</span>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -588,6 +616,41 @@ function ControlActions({
       </button>
     </div>
   )
+}
+
+function normalizeRiskLevel(value: string | null | undefined) {
+  const normalized = String(value || "LOW").trim().toUpperCase()
+  return normalized || "LOW"
+}
+
+function normalizeReasonCodes(value: ReplyJob["reason_codes"]) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean)
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (!trimmed) return []
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => String(item).trim()).filter(Boolean)
+      }
+    } catch {
+      return trimmed.split(",").map((item) => item.trim()).filter(Boolean)
+    }
+    return [trimmed]
+  }
+  return []
+}
+
+function formatReasonCode(code: string) {
+  const labels: Record<string, string> = {
+    PROMPT_INJECTION: "prompt injection",
+    SENSITIVE_INFORMATION: "sensitive information",
+    HIGH_RISK_INTENT: "high risk intent",
+    HIGH_RISK_COMMITMENT: "high risk commitment",
+  }
+  return labels[code] ? `${code}: ${labels[code]}` : code
 }
 
 function formatDate(value: string | null | undefined) {

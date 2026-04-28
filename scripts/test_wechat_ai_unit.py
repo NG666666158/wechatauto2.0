@@ -627,6 +627,7 @@ class GlobalAutoReplyTests(unittest.TestCase):
         self.assertEqual(len(jobs), 1)
         self.assertEqual(jobs[0]["risk_level"], "MEDIUM")
         self.assertTrue(jobs[0]["need_human_review"])
+        self.assertEqual(jobs[0]["reason_codes"], ["HIGH_RISK_INTENT"])
         self.assertIn("reply_review_required", [event["event_type"] for event in logged_events])
 
     def test_send_reply_skips_generation_when_stop_event_is_set(self) -> None:
