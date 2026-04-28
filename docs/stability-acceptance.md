@@ -1,57 +1,58 @@
-# Stability Acceptance Gate
+# 稳定性验收入口
 
-This safe preflight gate verifies the stability work added around runtime preflight, SEND_UNCERTAIN recovery, safety policy audit, RAG trust review, and trusted RAG rebuild readiness.
+本文档说明稳定性增强后的安全验收命令。完整后续路线图请看：[后续开发计划与收尾路线图](./后续开发计划与收尾路线图.md)。
 
-## Source-Only Check
+## 只检查源码
 
-Run this when the backend is not running:
+后端没有启动时使用：
 
 ```powershell
 py -3 scripts\run_stability_acceptance.py --skip-http --format pretty
 ```
 
-## Backend HTTP Check
+## 后端接口检查
 
-Run this after starting the local backend:
+本地后端启动后使用：
 
 ```powershell
 py -3 scripts\run_stability_acceptance.py --base-url http://127.0.0.1:8765/api/v1 --format pretty
 ```
 
-The script is safe for preflight use: it does not call send APIs and does not operate the WeChat UI. Most checks are GET requests; the trusted RAG rebuild probe may call `POST /api/v1/knowledge/trusted-rebuild`, which only rebuilds the local knowledge index when a trusted embedding provider is configured.
+该脚本适合发布前预检：不会调用真实发送接口，也不会操作微信窗口。大部分检查是读取接口；可信知识库重建探针可能调用 `POST /api/v1/knowledge/trusted-rebuild`，只有在配置了可信向量提供方时才会重建本地知识库索引。
 
-## Unified Desktop Acceptance Flow
+## 统一桌面验收流程
 
-Run the safe default flow when you want one report that includes the source-only gate and skips optional live checks:
+需要一份统一报告，并跳过可选真实运行检查时使用：
 
 ```powershell
 py -3 scripts\run_desktop_acceptance_flow.py --skip-http --skip-runtime-smoke --format pretty
 ```
 
-Run the backend HTTP gate as part of the same report after the local backend is up:
+本地后端启动后，把后端接口检查也纳入同一份报告：
 
 ```powershell
 py -3 scripts\run_desktop_acceptance_flow.py --base-url http://127.0.0.1:8765/api/v1 --skip-runtime-smoke --format pretty
 ```
 
-The unified flow outputs one JSON report with each step's command, exit code, accepted/skipped state, and stdout/stderr summaries. Runtime smoke is disabled by default. To run it, pass `--run-runtime-smoke`; this calls `scripts\runtime_web_smoke_1min.ps1`, starts and stops the runtime, and relies on the existing prompt for manual message injection. The flow does not automatically send WeChat messages.
+统一流程会输出一份报告，包含每一步命令、退出码、通过/跳过状态和摘要。真实运行冒烟默认关闭；如果传入 `--run-runtime-smoke`，会调用 `scripts\runtime_web_smoke_1min.ps1`，启动并停止运行时，并依赖人工注入测试消息。该流程不会自动发送微信消息。
 
-## Covered Contracts
+## 覆盖的检查项
 
-- Runtime send preflight helper exists and keeps `SEND_UNCERTAIN` blocking visible.
-- SEND_UNCERTAIN metrics expose unresolved count, recent 24h count, top error codes, and top conversations.
-- Safety policy audit records rule group changes and reset events.
-- RAG fake/untrusted knowledge routing keeps replies in manual review.
-- RAG trust diagnostics expose real-send blocking, trusted rebuild availability, provider, and recommended actions.
-- Trusted RAG rebuild is available through `POST /api/v1/knowledge/trusted-rebuild` and remains independent from WeChat message sending.
-- Home page risk overview remains wired to the frontend API client.
+- 发送前检查存在，并能显示 `SEND_UNCERTAIN` 阻断。
+- `SEND_UNCERTAIN` 指标包含未解决数量、最近 24 小时数量、主要错误码和主要会话。
+- 安全策略审计会记录规则组变更和恢复默认事件。
+- 安全词命中时，回复进入人工审核。
+- 普通低风险消息不会因为知识库 fake/untrusted 被默认拦截。
+- RAG 可信诊断能展示真实发送阻断状态、可信重建可用性、提供方和推荐动作。
+- `POST /api/v1/knowledge/trusted-rebuild` 可用于可信知识库重建，并且不触发微信消息发送。
+- 首页风险概览仍然连接到前端接口客户端。
 
-## Round 20 Status
+## Round 20 状态
 
-As of 2026-04-28, the stability gate includes the Round 20 trusted RAG rebuild flow:
+截至 2026-04-28，稳定性验收已包含 Round 20 的可信知识库重建流程：
 
 - `GET /api/v1/knowledge/trust-diagnostics`
 - `POST /api/v1/knowledge/trusted-rebuild`
 - `GET /api/v1/debug/knowledge-acceptance/history`
 
-Use the source-only flow before starting services, and the backend HTTP flow after `scripts/dev_start.ps1` reports both frontend and backend ready.
+启动服务前使用源码检查；`scripts/dev_start.ps1` 报告前后端 ready 后，再运行后端接口检查。

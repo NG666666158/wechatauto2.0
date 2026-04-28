@@ -1,5 +1,7 @@
 # P8 Release Checklist
 
+后续开发优先级和统一收尾路线请看：[后续开发计划与收尾路线图](./后续开发计划与收尾路线图.md)。
+
 ## 2026-04-28 稳定性收尾补充
 
 发布前除原 P8 检查外，还必须确认 Round 3-20 的稳定性增强闭环：
@@ -7,6 +9,7 @@
 - `SEND_UNCERTAIN` 不会自动重发，人工处理后有状态和审计记录。
 - 安全策略配置化可导出、导入、恢复默认，并记录 audit trail。
 - Pending 审核页能展示风险等级、原因码，并支持批准后进入 `SendCoordinator`。
+- 普通低风险消息不会因为知识库 fake/untrusted 被默认放进待审核；只有命中安全词或高风险规则时才进入人工审核。
 - RAG Trust Gate 能展示 fake / untrusted / trusted、真实发送阻断状态和推荐动作。
 - `POST /api/v1/knowledge/trusted-rebuild` 能在 trusted provider 可用时重建可信索引。
 - 统一验收入口 `py -3 scripts\run_desktop_acceptance_flow.py --skip-http --skip-runtime-smoke --format pretty` 通过。

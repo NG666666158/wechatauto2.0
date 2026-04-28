@@ -56,7 +56,8 @@
 2. [docs/architecture-overview.md](./docs/architecture-overview.md)
 3. [docs/desktop-app-backend.md](./docs/desktop-app-backend.md)
 4. [PROJECT_PLAN.md](./PROJECT_PLAN.md)
-5. [REFACTOR_PLAN.md](./REFACTOR_PLAN.md)
+5. [docs/后续开发计划与收尾路线图.md](./docs/后续开发计划与收尾路线图.md)
+6. [REFACTOR_PLAN.md](./REFACTOR_PLAN.md)
 
 P8 验收相关文档：
 

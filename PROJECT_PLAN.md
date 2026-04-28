@@ -4,6 +4,8 @@
 
 本项目已经完成 WeChatAuto 稳定性与一致性增强主线的 Round 3-20。当前状态不再只是“桌面客户端产品化进行中”，而是已经进入“核心闭环基本完成，准备最终验收和交付整理”的阶段。
 
+后续开发、收尾优先级和验收标准已经统一收敛到：[docs/后续开发计划与收尾路线图.md](./docs/后续开发计划与收尾路线图.md)。本文保留项目总体进度记录，具体下一步执行以路线图为准。
+
 当前更准确的进度判断：
 
 - 后端运行时主链路：`88% ~ 92%`
@@ -173,40 +175,25 @@
 
 ## 下一阶段重点
 
-接下来建议只围绕两条主线推进：
+下一阶段不再在本文维护重复清单，统一以 [docs/后续开发计划与收尾路线图.md](./docs/后续开发计划与收尾路线图.md) 为准。
 
-### 主线一：桌面客户端开发
+当前推荐顺序：
 
-- 明确客户端页面与后端接口映射
-- 补齐前端交互状态
-- 接通客户端设置、客户页、知识库页、消息页
-
-### 主线二：真实运行稳定性
-
-- 做更完整的 live smoke
-- 继续压实启动/停止/恢复
-- 补长期守护与异常回退策略
-
-## 最后一轮收尾清单
-
-如果目标是“接近可长期使用”，建议以这份清单为准：
-
-- [ ] 补完整桌面客户端开发文档
-- [ ] 完成前后端接口接线
-- [ ] 补齐消息页真实回复与人工接管闭环
-- [ ] 增加日志轮转与清理策略
-- [ ] 增加 memory 裁剪与保留策略
-- [ ] 增加数据备份、迁移、恢复说明
-- [ ] 增加更完整的真实微信长时间 smoke
-- [ ] 增加更清晰的安全规则与高风险场景保护
+1. 真实微信长时间运行验收和自动回复误拦截回归。
+2. 安全词配置页面优化、审核原因中文化、审核发送结果增强。
+3. 知识库证据接入审核页、可信重建体验完善。
+4. 运行时模块拆分。
+5. 用户操作手册、备份迁移说明和发布清单统一。
 
 ## 文档导航
 
-- [README.md](/C:/github/pywechat/pywechat-main/pywechat-main/README.md)
+- [README.md](./README.md)
   项目入口与当前能力总览
-- [docs/architecture-overview.md](/C:/github/pywechat/pywechat-main/pywechat-main/docs/architecture-overview.md)
+- [docs/后续开发计划与收尾路线图.md](./docs/后续开发计划与收尾路线图.md)
+  后续开发优先级、剩余任务和验收标准
+- [docs/architecture-overview.md](./docs/architecture-overview.md)
   当前代码结构、模块边界、数据流与存储布局
-- [docs/desktop-app-backend.md](/C:/github/pywechat/pywechat-main/pywechat-main/docs/desktop-app-backend.md)
+- [docs/desktop-app-backend.md](./docs/desktop-app-backend.md)
   客户端后端接口说明
-- [docs/superpowers/README.md](/C:/github/pywechat/pywechat-main/pywechat-main/docs/superpowers/README.md)
+- [docs/superpowers/README.md](./docs/superpowers/README.md)
   历史设计与阶段实现归档
