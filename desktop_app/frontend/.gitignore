@@ -1,0 +1,10 @@
+.next/
+.next-app/
+.next-dev-*/
+.next-build-*/
+build-artifacts/
+node_modules/
+out/
+dist/
+*.tsbuildinfo
+.env.local
