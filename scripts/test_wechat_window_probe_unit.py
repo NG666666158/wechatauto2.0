@@ -151,9 +151,13 @@ class WeChatWindowProbeTests(TestCase):
         window = FakeWindow(messages=[FakeElement("previous", runtime_id=1), FakeElement("confirmed reply", mine=True, runtime_id=2)])
         confirmer = PyWeixinVisualSendConfirmer(probe=build_probe(window))
 
-        confirmed = confirmer.confirm_sent(conversation_id="friend:Alice", text="confirmed reply")
+        confirmed = confirmer.confirm_sent(conversation_id="friend:Alice", target_title="Alice", text="confirmed reply")
 
-        self.assertTrue(confirmed)
+        self.assertTrue(confirmed["ok"])
+        self.assertEqual(confirmed["reason"], "matched_visible_message")
+        self.assertEqual(confirmed["matched_text"], "confirmed reply")
+        self.assertEqual(confirmed["target_title"], "Alice")
+        self.assertEqual([item["text"] for item in confirmed["visible_messages"]], ["previous", "confirmed reply"])
 
     def test_visual_confirmer_does_not_right_click_messages_for_ownership(self) -> None:
         from wechat_ai.app.wechat_window_probe import PyWeixinVisualSendConfirmer
@@ -164,7 +168,7 @@ class WeChatWindowProbeTests(TestCase):
 
         confirmed = confirmer.confirm_sent(conversation_id="friend:Alice", text="confirmed reply")
 
-        self.assertTrue(confirmed)
+        self.assertTrue(confirmed["ok"])
         self.assertEqual(FakeTools.calls, 0)
 
     def test_collect_visible_messages_can_skip_ownership_detection(self) -> None:
@@ -186,7 +190,10 @@ class WeChatWindowProbeTests(TestCase):
 
         confirmed = confirmer.confirm_sent(conversation_id="friend:Alice", text="confirmed reply")
 
-        self.assertFalse(confirmed)
+        self.assertFalse(confirmed["ok"])
+        self.assertEqual(confirmed["reason"], "message_not_visible")
+        self.assertEqual(confirmed["matched_text"], "")
+        self.assertEqual([item["text"] for item in confirmed["visible_messages"]], ["other content"])
 
 
 if __name__ == "__main__":

@@ -277,11 +277,24 @@ function SendJobCard({
   onControl: (target: ActionTarget) => void
   onResolve: (target: SendActionTarget) => void
 }) {
+  const evidence = formatConfirmationEvidence(job)
+
   return (
     <article className="rounded-lg border border-rose-100 bg-rose-50/40 p-4">
       <JobHeader id={job.send_job_id} status={job.status} time={job.updated_at ?? job.created_at} danger />
       <MetaRow label="会话" value={job.target_title || job.conversation_id} />
-      <MetaRow label="确认结果" value={formatConfirmationResult(job.confirmation_result)} />
+      <MetaRow label="确认结果" value={evidence.summary} />
+      {evidence.fields.length ? (
+        <div className="mt-2 rounded-md bg-white px-3 py-2">
+          {evidence.fields.map((item) =>
+            item.multiline ? (
+              <TextBlock key={item.key} label={item.label} value={item.value} />
+            ) : (
+              <MetaRow key={item.key} label={item.label} value={item.value} />
+            ),
+          )}
+        </div>
+      ) : null}
       <TextBlock label="发送内容" value={job.content} strong />
       <div className="mt-3 flex items-start gap-2 rounded-md bg-white px-3 py-2 text-xs text-amber-700">
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -357,6 +370,72 @@ function SendJobActions({
       </button>
     </div>
   )
+}
+
+type ConfirmationEvidence = {
+  summary: string
+  fields: Array<{
+    key: string
+    label: string
+    value: string
+    multiline?: boolean
+  }>
+}
+
+function formatConfirmationEvidence(job: SendJob): ConfirmationEvidence {
+  const value = job.confirmation_result
+  const summary = formatConfirmationResult(value)
+  if (!value || typeof value === "string") {
+    return { summary, fields: [] }
+  }
+  const nested = typeof value.confirmation === "object" && value.confirmation !== null && !Array.isArray(value.confirmation)
+    ? (value.confirmation as Record<string, unknown>)
+    : {}
+  const source = {
+    ...nested,
+    ...value,
+    before_screenshot: value.before_screenshot ?? nested.before_screenshot ?? job.before_screenshot,
+    after_screenshot: value.after_screenshot ?? nested.after_screenshot ?? job.after_screenshot,
+  }
+
+  const fields = [
+    evidenceField(source, "reason", "reason"),
+    evidenceField(source, "resolution", "resolution"),
+    evidenceField(source, "visible_messages", "visible_messages", true),
+    evidenceField(source, "matched_text", "matched_text", true),
+    evidenceField(source, "before_screenshot", "before_screenshot"),
+    evidenceField(source, "after_screenshot", "after_screenshot"),
+  ].filter((item): item is ConfirmationEvidence["fields"][number] => Boolean(item))
+
+  return {
+    summary: fields.length ? "evidence available" : summary,
+    fields,
+  }
+}
+
+function evidenceField(
+  source: Record<string, unknown>,
+  key: string,
+  label: string,
+  multiline = false,
+): ConfirmationEvidence["fields"][number] | null {
+  if (!(key in source)) return null
+  const value = formatEvidenceValue(source[key])
+  return value ? { key, label, value, multiline } : null
+}
+
+function formatEvidenceValue(value: unknown): string {
+  if (value === null || value === undefined) return ""
+  if (typeof value === "string") return value
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  if (Array.isArray(value)) {
+    return value.map((item) => formatEvidenceValue(item)).filter(Boolean).join(" / ")
+  }
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
 }
 
 function formatConfirmationResult(value: SendJob["confirmation_result"]) {

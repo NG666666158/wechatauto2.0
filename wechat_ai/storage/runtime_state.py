@@ -245,6 +245,11 @@ class RuntimeStateStore:
         after_screenshot: str | None = None,
         confirmation_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if confirmation_result is not None:
+            confirmation = confirmation_result.get("confirmation")
+            if isinstance(confirmation, dict):
+                before_screenshot = before_screenshot or _optional_text(confirmation.get("before_screenshot"))
+                after_screenshot = after_screenshot or _optional_text(confirmation.get("after_screenshot"))
         with self._connect() as conn:
             current = self._fetch_one(conn, "SELECT * FROM send_jobs WHERE send_job_id = ?", (send_job_id,))
             if not current:
@@ -359,9 +364,58 @@ class RuntimeStateStore:
     def list_uncertain_send_jobs(self, *, limit: int = 100) -> list[dict[str, Any]]:
         return self.list_send_jobs(status="SEND_UNCERTAIN", limit=limit)
 
+    def list_unresolved_uncertain_by_conversation(
+        self,
+        conversation_id: str,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        normalized_id = str(conversation_id).strip()
+        return self._fetch_all_public(
+            """
+            SELECT * FROM send_jobs
+            WHERE conversation_id = ? AND status = 'SEND_UNCERTAIN'
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            (normalized_id, limit),
+        )
+
+    def conversation_has_unresolved_uncertain_send(self, conversation_id: str) -> bool:
+        normalized_id = str(conversation_id).strip()
+        if not normalized_id:
+            return False
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT 1 FROM send_jobs
+                WHERE conversation_id = ? AND status = 'SEND_UNCERTAIN'
+                LIMIT 1
+                """,
+                (normalized_id,),
+            ).fetchone()
+        return row is not None
+
     def list_send_attempts(self, send_job_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
         return self._fetch_all_public(
-            "SELECT * FROM send_attempts WHERE send_job_id = ? ORDER BY attempt_no ASC LIMIT ?",
+            """
+            SELECT
+                send_attempts.attempt_id,
+                send_attempts.send_job_id,
+                send_attempts.attempt_no,
+                send_attempts.status,
+                send_attempts.error_code,
+                send_attempts.error_message,
+                COALESCE(send_attempts.before_screenshot, send_jobs.before_screenshot) AS before_screenshot,
+                COALESCE(send_attempts.after_screenshot, send_jobs.after_screenshot) AS after_screenshot,
+                send_attempts.started_at,
+                send_attempts.finished_at
+            FROM send_attempts
+            LEFT JOIN send_jobs ON send_jobs.send_job_id = send_attempts.send_job_id
+            WHERE send_attempts.send_job_id = ?
+            ORDER BY send_attempts.attempt_no ASC
+            LIMIT ?
+            """,
             (send_job_id, limit),
         )
 
@@ -497,3 +551,8 @@ def _normalize(value: object) -> str:
 
 def _json_dumps(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _optional_text(value: object) -> str | None:
+    text = str(value or "").strip()
+    return text or None

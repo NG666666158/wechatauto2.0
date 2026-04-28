@@ -7,7 +7,7 @@ import { AppShell } from "@/components/app-shell"
 import { ErrorState, LoadingState } from "@/components/api-state"
 import { useServerEvents } from "@/hooks/use-server-events"
 import { apiClient } from "@/lib/api"
-import type { DashboardSummary, LogsSummary, RecentLogEvent, RuntimeAction, RuntimeStatus, WechatEnvironment } from "@/lib/api"
+import type { DashboardSummary, LogsSummary, RecentLogEvent, RuntimeAction, RuntimeStatus, SendJob, WechatEnvironment } from "@/lib/api"
 import {
   Bell,
   Bot,
@@ -29,6 +29,7 @@ type HomeState = {
   logsSummary: LogsSummary | null
   environment: WechatEnvironment | null
   recentLogs: RecentLogEvent[]
+  uncertainSendJobs: SendJob[]
 }
 
 const emptyState: HomeState = {
@@ -37,6 +38,7 @@ const emptyState: HomeState = {
   logsSummary: null,
   environment: null,
   recentLogs: [],
+  uncertainSendJobs: [],
 }
 
 export default function HomePage() {
@@ -51,14 +53,15 @@ export default function HomePage() {
 
   const loadHomeData = useCallback(async () => {
     setError("")
-    const [dashboard, runtime, logsSummary, recentLogs] = await Promise.all([
+    const [dashboard, runtime, logsSummary, recentLogs, uncertainSendJobs] = await Promise.all([
       apiClient.getDashboardSummary(),
       apiClient.getRuntimeStatus(),
       apiClient.getLogsSummary(20),
       apiClient.getRecentLogs(3),
+      apiClient.listUncertainSendJobs(20),
     ])
 
-    const failed = [dashboard, runtime, logsSummary, recentLogs].find((item) => !item.success)
+    const failed = [dashboard, runtime, logsSummary, recentLogs, uncertainSendJobs].find((item) => !item.success)
     if (failed?.error) {
       setError(`${failed.error.code}: ${failed.error.message}`)
     }
@@ -69,6 +72,7 @@ export default function HomePage() {
       logsSummary: logsSummary.data,
       environment: previous.environment,
       recentLogs: recentLogs.data ?? [],
+      uncertainSendJobs: uncertainSendJobs.data ?? [],
     }))
     setLoading(false)
   }, [])
@@ -246,8 +250,8 @@ export default function HomePage() {
               <StatusCard
                 label="待处理事项"
                 icon={<Bell className="h-6 w-6 text-rose-500" />}
-                value={String(app?.pending_count ?? (dashboard?.pending.identity_candidates ?? 0))}
-                sub={`${state.logsSummary?.recent_error_count ?? 0} 条近期异常`}
+                value={String(state.uncertainSendJobs.length)}
+                sub={`SEND_UNCERTAIN / pending ${app?.pending_count ?? (dashboard?.pending.identity_candidates ?? 0)} / errors ${state.logsSummary?.recent_error_count ?? 0}`}
                 valueClass="text-[var(--app-strong-text)]"
                 accentClass="text-rose-500"
                 isNumber

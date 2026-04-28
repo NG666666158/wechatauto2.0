@@ -524,6 +524,44 @@ class GlobalAutoReplyTests(unittest.TestCase):
         detail = app.conversation_store.get_record("friend:Alice")
         self.assertEqual(detail["messages"], [])
 
+    def test_send_reply_precheck_blocks_unresolved_uncertain_send_before_pyweixin_sender(self) -> None:
+        from wechat_ai.storage.runtime_state import RuntimeStateStore
+
+        temp_dir = TMP_ROOT / "runtime_uncertain_precheck" / str(uuid4())
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        sent_messages: list[tuple[str, list[str]]] = []
+        logged_events: list[dict[str, object]] = []
+        self.runtime.Messages = types.SimpleNamespace(
+            send_messages_to_friend=lambda friend, messages, close_weixin=False: sent_messages.append((friend, messages))
+        )
+
+        app = self.build_app()
+        app.engine.event_logger = types.SimpleNamespace(
+            log_event=lambda event_type, **fields: logged_events.append({"event_type": event_type, **fields})
+        )
+        app.runtime_state_store = RuntimeStateStore(temp_dir / "runtime_state.sqlite3")
+        app.runtime_state_store.create_send_job(
+            reply_job_id="reply-1",
+            conversation_id="friend:Alice",
+            target_title="Alice",
+            content="previous reply",
+            status="SEND_UNCERTAIN",
+        )
+
+        blocked = app._send_reply(
+            session_name="Alice",
+            message_text="hello",
+            contexts=["ctx-1"],
+            is_group=False,
+        )
+
+        self.assertEqual(blocked["friend_replies"], 0)
+        self.assertEqual(blocked["errors"], 1)
+        self.assertEqual(sent_messages, [])
+        failed_events = [event for event in logged_events if event["event_type"] == "message_send_failed"]
+        self.assertEqual(len(failed_events), 1)
+        self.assertEqual(failed_events[0]["reason_code"], "UNRESOLVED_SEND_UNCERTAIN")
+
     def test_send_reply_counts_reply_after_visual_confirmation_succeeds(self) -> None:
         sent_messages: list[tuple[str, list[str]]] = []
         logged_events: list[dict[str, object]] = []

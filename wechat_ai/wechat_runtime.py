@@ -36,7 +36,7 @@ from .rag.hybrid_retriever import HybridRetriever
 from .rag.keyword_retriever import KeywordRetriever
 from .rag.retriever import LocalIndexRetriever, index_has_trusted_embeddings
 from .reply_scheduler import PendingReplyBatch, ReplyScheduler
-from .runtime import SendCoordinator
+from .runtime import SendCoordinator, UiActionLock
 from .storage import RuntimeStateStore
 
 
@@ -285,6 +285,7 @@ class WeChatAIApp:
     conversation_store: ConversationStore = field(default_factory=_build_conversation_store)
     runtime_state_store: RuntimeStateStore = field(default_factory=_build_runtime_state_store)
     runtime_send_sequence: int = 0
+    ui_action_lock: UiActionLock = field(default_factory=UiActionLock)
     send_confirmer: Any | None = None
     stop_event: Any | None = None
     enforce_trusted_knowledge_for_sending: bool = False
@@ -947,11 +948,8 @@ class WeChatAIApp:
                     send_result=kwargs.get("send_result") if isinstance(kwargs.get("send_result"), dict) else {"sent": True},
                 )
             ),
-            precheck=(
-                lambda **kwargs: _precheck_trusted_knowledge_embeddings()
-                if self.enforce_trusted_knowledge_for_sending
-                else {"ok": True}
-            ),
+            precheck=lambda **kwargs: self._send_reply_precheck(str(kwargs["conversation_id"])),
+            ui_lock=self.ui_action_lock,
         )
         coordinated = coordinator.send_reply(
             conversation_id=conversation_id,
@@ -1024,6 +1022,17 @@ class WeChatAIApp:
             is_group=is_group,
         )
         return result
+
+    def _send_reply_precheck(self, conversation_id: str) -> dict[str, object]:
+        if self.runtime_state_store.conversation_has_unresolved_uncertain_send(conversation_id):
+            return {
+                "ok": False,
+                "reason_code": "UNRESOLVED_SEND_UNCERTAIN",
+                "reason": "conversation has an unresolved SEND_UNCERTAIN send job",
+            }
+        if self.enforce_trusted_knowledge_for_sending:
+            return _precheck_trusted_knowledge_embeddings()
+        return {"ok": True}
 
     def _flush_active_pending(
         self,

@@ -591,6 +591,36 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_send_reply_blocks_same_conversation_with_unresolved_uncertain_send_until_resolved(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_send_uncertain_block")
+        try:
+            sender = FakeReplySender()
+            service = DesktopAppService(data_root=temp_dir, reply_sender=sender)
+            send = service.runtime_state_store.create_send_job(
+                reply_job_id="reply-1",
+                conversation_id="friend:alice",
+                target_title="Alice",
+                content="previous reply",
+                status="SEND_UNCERTAIN",
+            )
+
+            blocked = service.send_reply("friend:alice", "next reply")
+
+            self.assertEqual(blocked["status"], "blocked")
+            self.assertFalse(blocked["allowed"])
+            self.assertEqual(blocked["reason_code"], "UNRESOLVED_SEND_UNCERTAIN")
+            self.assertEqual(sender.sent, [])
+
+            service.runtime_state_store.resolve_uncertain_send_job(send["send_job_id"], resolution="failed")
+            allowed = service.send_reply("friend:alice", "next reply")
+
+            self.assertEqual(allowed["status"], "sent")
+            self.assertEqual(sender.sent, [{"conversation_id": "friend:alice", "text": "next reply", "is_group": False}])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_send_reply_reports_sender_failure_without_recording_outgoing_message(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 

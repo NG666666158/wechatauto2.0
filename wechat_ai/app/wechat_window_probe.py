@@ -175,24 +175,45 @@ class PyWeixinVisualSendConfirmer:
         self,
         *,
         conversation_id: str,
+        target_title: str = "",
         text: str,
         is_group: bool = False,
         send_result: dict[str, object] | None = None,
-    ) -> bool:
-        del conversation_id, is_group, send_result
+    ) -> dict[str, object]:
+        del is_group, send_result
         target = _normalize_text(text)
         if not target:
-            return False
+            return _confirmation_evidence(
+                ok=False,
+                reason="empty_target_text",
+                visible_messages=[],
+                matched_text="",
+                target_title=target_title or conversation_id,
+            )
         deadline = time.time() + max(self.timeout_seconds, 0.0)
+        messages: list[VisibleMessage] = []
         while True:
             messages = self.probe.collect_visible_messages(
                 limit=self.recent_limit,
                 detect_ownership=False,
             )
-            if _has_matching_visible_message(messages, target):
-                return True
+            matched = _matching_visible_message(messages, target)
+            if matched is not None:
+                return _confirmation_evidence(
+                    ok=True,
+                    reason="matched_visible_message",
+                    visible_messages=messages,
+                    matched_text=matched.text,
+                    target_title=target_title or conversation_id,
+                )
             if time.time() >= deadline:
-                return False
+                return _confirmation_evidence(
+                    ok=False,
+                    reason="message_not_visible",
+                    visible_messages=messages,
+                    matched_text="",
+                    target_title=target_title or conversation_id,
+                )
             time.sleep(max(self.poll_interval_seconds, 0.01))
 
 
@@ -201,15 +222,39 @@ def probe_wechat_ui_ready() -> dict[str, object]:
 
 
 def _has_matching_visible_message(messages: Sequence[VisibleMessage], target: str) -> bool:
+    return _matching_visible_message(messages, target) is not None
+
+
+def _matching_visible_message(messages: Sequence[VisibleMessage], target: str) -> VisibleMessage | None:
     normalized_target = _normalize_text(target)
     if not normalized_target:
-        return False
+        return None
     outgoing_matches = [
         item for item in messages if item.is_mine is True and _normalize_text(item.text) == normalized_target
     ]
     if outgoing_matches:
-        return True
-    return any(item.is_mine is None and _normalize_text(item.text) == normalized_target for item in messages[-3:])
+        return outgoing_matches[-1]
+    unknown_matches = [
+        item for item in messages[-3:] if item.is_mine is None and _normalize_text(item.text) == normalized_target
+    ]
+    return unknown_matches[-1] if unknown_matches else None
+
+
+def _confirmation_evidence(
+    *,
+    ok: bool,
+    reason: str,
+    visible_messages: Sequence[VisibleMessage],
+    matched_text: str,
+    target_title: str,
+) -> dict[str, object]:
+    return {
+        "ok": ok,
+        "reason": reason,
+        "visible_messages": [asdict(item) for item in visible_messages],
+        "matched_text": matched_text,
+        "target_title": target_title,
+    }
 
 
 def _list_items(chat_list: Any) -> list[Any]:

@@ -172,6 +172,40 @@ class RuntimeStateStoreTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_conversation_has_unresolved_uncertain_send_until_resolved(self) -> None:
+        from wechat_ai.storage.runtime_state import RuntimeStateStore
+
+        temp_dir = _fresh_dir(".tmp_runtime_state_uncertain_by_conversation")
+        try:
+            store = RuntimeStateStore(temp_dir / "runtime_state.sqlite3")
+            send = store.create_send_job(
+                reply_job_id="reply-1",
+                conversation_id="friend:Alice",
+                target_title="Alice",
+                content="hi",
+                status="SEND_UNCERTAIN",
+            )
+            store.create_send_job(
+                reply_job_id="reply-2",
+                conversation_id="friend:Bob",
+                target_title="Bob",
+                content="hi",
+                status="SEND_UNCERTAIN",
+            )
+
+            self.assertTrue(store.conversation_has_unresolved_uncertain_send("friend:Alice"))
+            self.assertEqual(
+                [job["send_job_id"] for job in store.list_unresolved_uncertain_by_conversation("friend:Alice")],
+                [send["send_job_id"]],
+            )
+            self.assertFalse(store.conversation_has_unresolved_uncertain_send("friend:alice"))
+
+            store.resolve_uncertain_send_job(send["send_job_id"], resolution="failed")
+
+            self.assertFalse(store.conversation_has_unresolved_uncertain_send("friend:Alice"))
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_resolve_uncertain_send_job_rejects_non_uncertain_status(self) -> None:
         from wechat_ai.storage.runtime_state import RuntimeStateStore
 
@@ -209,7 +243,15 @@ class SendCoordinatorTests(TestCase):
             coordinator = SendCoordinator(
                 store=store,
                 sender=sender,
-                confirmer=lambda **kwargs: True,
+                confirmer=lambda **kwargs: {
+                    "ok": True,
+                    "reason": "matched_visible_message",
+                    "visible_messages": [{"text": "hi"}],
+                    "matched_text": "hi",
+                    "target_title": "Alice",
+                    "before_screenshot": "screens/before-confirmed.png",
+                    "after_screenshot": "screens/after-confirmed.png",
+                },
                 precheck=lambda **kwargs: {"ok": True},
             )
 
@@ -229,7 +271,15 @@ class SendCoordinatorTests(TestCase):
             self.assertEqual(result["status"], "sent_confirmed")
             self.assertEqual(duplicate["status"], "already_sent")
             self.assertEqual(len(sent), 1)
-            self.assertEqual(store.list_send_attempts(result["send_job_id"])[0]["status"], "SENT_CONFIRMED")
+            attempt = store.list_send_attempts(result["send_job_id"])[0]
+            send_job = store.get_send_job(result["send_job_id"])
+            self.assertEqual(attempt["status"], "SENT_CONFIRMED")
+            self.assertEqual(attempt["before_screenshot"], "screens/before-confirmed.png")
+            self.assertEqual(attempt["after_screenshot"], "screens/after-confirmed.png")
+            self.assertEqual(send_job["before_screenshot"], "screens/before-confirmed.png")
+            self.assertEqual(send_job["after_screenshot"], "screens/after-confirmed.png")
+            self.assertTrue(send_job["confirmation_result"]["ok"])
+            self.assertEqual(send_job["confirmation_result"]["confirmation"]["matched_text"], "hi")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -249,7 +299,15 @@ class SendCoordinatorTests(TestCase):
             coordinator = SendCoordinator(
                 store=store,
                 sender=sender,
-                confirmer=lambda **kwargs: False,
+                confirmer=lambda **kwargs: {
+                    "ok": False,
+                    "reason": "message_not_visible",
+                    "visible_messages": [{"text": "other"}],
+                    "matched_text": "",
+                    "target_title": "Alice",
+                    "before_screenshot": "screens/before-uncertain.png",
+                    "after_screenshot": "screens/after-uncertain.png",
+                },
                 precheck=lambda **kwargs: {"ok": True},
             )
 
@@ -269,7 +327,15 @@ class SendCoordinatorTests(TestCase):
             self.assertEqual(result["status"], "send_uncertain")
             self.assertEqual(duplicate["status"], "send_uncertain")
             self.assertEqual(len(sent), 1)
-            self.assertEqual(store.list_uncertain_send_jobs()[0]["send_job_id"], result["send_job_id"])
+            uncertain_job = store.list_uncertain_send_jobs()[0]
+            attempt = store.list_send_attempts(result["send_job_id"])[0]
+            self.assertEqual(uncertain_job["send_job_id"], result["send_job_id"])
+            self.assertEqual(uncertain_job["before_screenshot"], "screens/before-uncertain.png")
+            self.assertEqual(uncertain_job["after_screenshot"], "screens/after-uncertain.png")
+            self.assertEqual(attempt["before_screenshot"], "screens/before-uncertain.png")
+            self.assertEqual(attempt["after_screenshot"], "screens/after-uncertain.png")
+            self.assertEqual(uncertain_job["confirmation_result"]["reason"], "message_not_visible")
+            self.assertEqual(uncertain_job["confirmation_result"]["confirmation"]["visible_messages"], [{"text": "other"}])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

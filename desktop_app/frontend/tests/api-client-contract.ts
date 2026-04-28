@@ -50,6 +50,14 @@ async function assertApiClientContract() {
   })
   const sendJobs: ApiResponse<SendJob[]> = await apiClient.listSendJobs("SEND_UNCERTAIN", 20)
   const uncertainSendJobs: ApiResponse<SendJob[]> = await apiClient.listUncertainSendJobs(20)
+  const uncertainSendEvidence: SendJob["confirmation_result"] = {
+    reason: "send confirmation timed out",
+    resolution: "manual_review",
+    visible_messages: ["hello", "pending"],
+    matched_text: "hello",
+    before_screenshot: "runtime/screenshots/before.png",
+    after_screenshot: "runtime/screenshots/after.png",
+  }
   const resolvedSendJob: ApiResponse<SendJob> = await apiClient.resolveSendJob("send_001", {
     resolution: "confirmed",
     reason: "manual confirmation",
@@ -101,6 +109,7 @@ async function assertApiClientContract() {
     cancelledReplyJob,
     sendJobs,
     uncertainSendJobs,
+    uncertainSendEvidence,
     resolvedSendJob,
     suggestion,
     sent,

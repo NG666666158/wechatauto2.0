@@ -21,7 +21,7 @@ from wechat_ai.rag.embeddings import FakeEmbeddings
 from wechat_ai.rag.hybrid_retriever import HybridRetriever
 from wechat_ai.rag.keyword_retriever import KeywordRetriever
 from wechat_ai.rag.retriever import LocalIndexRetriever, index_has_trusted_embeddings
-from wechat_ai.runtime import SendCoordinator
+from wechat_ai.runtime import SendCoordinator, UiActionLock
 from wechat_ai.safety import SafetyPolicyEngine
 from wechat_ai.storage import RuntimeStateStore
 from wechat_ai.rag.web_knowledge_builder import WebKnowledgeBuilder
@@ -306,6 +306,7 @@ class DesktopAppService:
         self.reply_sender = reply_sender
         self.send_confirmer = send_confirmer
         self.wechat_window_probe = wechat_window_probe
+        self.ui_action_lock = UiActionLock()
         self.identity_admin = identity_admin_module or identity_admin
         self.self_identity_admin = self_identity_admin
 
@@ -750,6 +751,16 @@ class DesktopAppService:
             send_confirmer = PyWeixinVisualSendConfirmer(probe=self._get_wechat_window_probe())
         if sender is not None:
             normalized_id = str(conversation_id).strip()
+            if self.runtime_state_store.conversation_has_unresolved_uncertain_send(normalized_id):
+                return {
+                    "status": "blocked",
+                    "action": "send_reply",
+                    "allowed": False,
+                    "conversation_id": conversation_id,
+                    "text": cleaned_text,
+                    "reason_code": "UNRESOLVED_SEND_UNCERTAIN",
+                    "reason": "conversation has an unresolved SEND_UNCERTAIN send job",
+                }
             is_group = _conversation_chat_type(conversation_id) == "group"
             reply_job = self.runtime_state_store.create_reply_job(
                 conversation_id=normalized_id,
@@ -785,6 +796,7 @@ class DesktopAppService:
                     str(send_job.get("conversation_id") or normalized_id),
                     {"paused": True},
                 ),
+                ui_lock=self.ui_action_lock,
             )
             coordinated = coordinator.send_reply(
                 conversation_id=normalized_id,

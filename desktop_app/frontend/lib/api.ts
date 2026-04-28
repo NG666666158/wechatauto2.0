@@ -251,6 +251,15 @@ export type ReplyJob = {
   updated_at?: string | null
 }
 
+export type SendConfirmationResult = Record<string, unknown> & {
+  reason?: unknown
+  resolution?: unknown
+  visible_messages?: unknown
+  matched_text?: unknown
+  before_screenshot?: unknown
+  after_screenshot?: unknown
+}
+
 export type SendJob = {
   send_job_id: string
   reply_job_id?: string
@@ -262,7 +271,7 @@ export type SendJob = {
   lock_owner?: string | null
   before_screenshot?: string | null
   after_screenshot?: string | null
-  confirmation_result?: Record<string, unknown> | string | null
+  confirmation_result?: SendConfirmationResult | string | null
   created_at?: string | null
   updated_at?: string | null
 }

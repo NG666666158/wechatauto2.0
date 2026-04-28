@@ -146,12 +146,18 @@ class SendCoordinator:
                 send_result=normalized_send_result,
             )
             if confirmed:
-                self.store.finish_send_attempt(str(attempt["attempt_id"]), status="SENT_CONFIRMED")
+                screenshot_evidence = _confirmation_screenshots(confirmation_detail)
+                self.store.finish_send_attempt(
+                    str(attempt["attempt_id"]),
+                    status="SENT_CONFIRMED",
+                    **screenshot_evidence,
+                )
                 self.store.mark_send_job(
                     send_job_id,
                     status="SENT_CONFIRMED",
                     lock_owner=None,
                     confirmation_result={"ok": True, **confirmation_detail},
+                    **screenshot_evidence,
                 )
                 return {
                     "status": "sent_confirmed",
@@ -161,17 +167,20 @@ class SendCoordinator:
                     "send_result": normalized_send_result,
                 }
 
+            screenshot_evidence = _confirmation_screenshots(confirmation_detail)
             self.store.finish_send_attempt(
                 str(attempt["attempt_id"]),
                 status="SEND_UNCERTAIN",
                 error_code="SEND_NOT_CONFIRMED",
                 error_message=str(confirmation_detail.get("reason", "")),
+                **screenshot_evidence,
             )
             updated_send_job = self.store.mark_send_job(
                 send_job_id,
                 status="SEND_UNCERTAIN",
                 lock_owner=None,
                 confirmation_result={"ok": False, "reason_code": "SEND_NOT_CONFIRMED", **confirmation_detail},
+                **screenshot_evidence,
             )
             result = {
                 "status": "send_uncertain",
@@ -200,10 +209,19 @@ class SendCoordinator:
         try:
             result = self.confirmer(**kwargs)
         except Exception as exc:
-            return False, {"reason": f"{type(exc).__name__}: {exc}", "confirmation_required": True}
+            reason = f"{type(exc).__name__}: {exc}"
+            return False, {"reason": reason, "confirmation": {"ok": False, "reason": reason}, "confirmation_required": True}
         if isinstance(result, dict):
-            return bool(result.get("ok", result.get("confirmed", False))), {"confirmation": result, "confirmation_required": True}
-        return bool(result), {"confirmation_required": True}
+            detail = {"confirmation": result, "confirmation_required": True}
+            if "reason" in result:
+                detail["reason"] = str(result.get("reason") or "")
+            return bool(result.get("ok", result.get("confirmed", False))), detail
+        confirmed = bool(result)
+        detail = {"confirmation": {"ok": confirmed}, "confirmation_required": True}
+        if not confirmed:
+            detail["reason"] = "confirmation_false"
+            detail["confirmation"]["reason"] = "confirmation_false"
+        return confirmed, detail
 
     def _notify_uncertain(self, send_job: dict[str, Any], result: dict[str, Any]) -> None:
         if self.on_uncertain is None:
@@ -212,3 +230,15 @@ class SendCoordinator:
             self.on_uncertain(send_job, result)
         except Exception:
             return
+
+
+def _confirmation_screenshots(confirmation_detail: dict[str, Any]) -> dict[str, str]:
+    confirmation = confirmation_detail.get("confirmation")
+    if not isinstance(confirmation, dict):
+        confirmation = {}
+    screenshots: dict[str, str] = {}
+    for key in ("before_screenshot", "after_screenshot"):
+        value = confirmation_detail.get(key, confirmation.get(key))
+        if value:
+            screenshots[key] = str(value)
+    return screenshots

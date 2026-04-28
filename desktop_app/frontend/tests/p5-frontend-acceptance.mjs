@@ -88,6 +88,28 @@ const checks = [
     },
   },
   {
+    name: "pending page renders send confirmation evidence fields",
+    run: () => {
+      const source = read("app/pending/page.tsx")
+      return (
+        source.includes("formatConfirmationEvidence") &&
+        source.includes("reason") &&
+        source.includes("resolution") &&
+        source.includes("visible_messages") &&
+        source.includes("matched_text") &&
+        source.includes("before_screenshot") &&
+        source.includes("after_screenshot")
+      )
+    },
+  },
+  {
+    name: "home page loads uncertain send job overview",
+    run: () => {
+      const source = read("app/page.tsx")
+      return source.includes("listUncertainSendJobs(20)") && source.includes("uncertainSendJobs")
+    },
+  },
+  {
     name: "dangerous message send requires confirmation",
     run: () => read("app/messages/page.tsx").includes("window.confirm"),
   },
