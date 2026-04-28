@@ -3,7 +3,7 @@
   "api_version": "0.1.0",
   "base_path": "/api/v1",
   "contract_version": "p4-baseline-v1",
-  "endpoint_count": 54,
+  "endpoint_count": 55,
   "endpoints": [
     {
       "id": "get_api_v1_controls_conversations_conversation_id",
@@ -148,6 +148,21 @@
       ],
       "response_schema": "ApiResponse_KnowledgeAcceptanceSnapshotData_",
       "summary": "Knowledge Acceptance",
+      "tags": [
+        "debug"
+      ]
+    },
+    {
+      "id": "get_api_v1_debug_knowledge_acceptance_history",
+      "method": "GET",
+      "path": "/api/v1/debug/knowledge-acceptance/history",
+      "request_schema": "",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "ApiResponse_list_KnowledgeAcceptanceHistoryRecordData__",
+      "summary": "Knowledge Acceptance History",
       "tags": [
         "debug"
       ]
@@ -825,7 +840,7 @@
       "/api/v1/errors/catalog"
     ]
   },
-  "schema_count": 93,
+  "schema_count": 95,
   "schemas": [
     "ApiErrorPayload",
     "ApiResponse_ConversationControlData_",
@@ -855,6 +870,7 @@
     "ApiResponse_list_CustomerData__",
     "ApiResponse_list_IdentityCandidateData__",
     "ApiResponse_list_IdentityDraftData__",
+    "ApiResponse_list_KnowledgeAcceptanceHistoryRecordData__",
     "ApiResponse_list_KnowledgeSearchResultData__",
     "ApiResponse_list_SafetyPolicyAuditRecordData__",
     "ApiResponse_list_dict_str__object___",
@@ -875,6 +891,7 @@
     "HttpErrorCodeData",
     "IdentityCandidateData",
     "IdentityDraftData",
+    "KnowledgeAcceptanceHistoryRecordData",
     "KnowledgeAcceptanceSnapshotData",
     "KnowledgeFileImportData",
     "KnowledgeImportRequest",

@@ -265,6 +265,18 @@ class KnowledgeAcceptanceSnapshotData(BaseModel):
     web_build_status: str = ""
 
 
+class KnowledgeAcceptanceHistoryRecordData(BaseModel):
+    created_at: str = ""
+    imported_files: list[str] = Field(default_factory=list)
+    search_query: str = ""
+    retrieved_chunk_ids: list[str] = Field(default_factory=list)
+    knowledge_ready: bool = False
+    embedding_provider: str | None = None
+    embedding_trusted: bool = False
+    knowledge_trust_status: str = "unknown"
+    web_build_status: str = ""
+
+
 class RetentionApplyResultData(BaseModel):
     logs_removed: int = 0
     memory_files_trimmed: int = 0

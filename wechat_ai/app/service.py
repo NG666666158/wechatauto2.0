@@ -292,6 +292,7 @@ class DesktopAppService:
         self.runtime_log_path = root / "logs" / "runtime_events.jsonl"
         self.runtime_log_path.parent.mkdir(parents=True, exist_ok=True)
         self.conversation_store_path = self.app_dir / "conversations.json"
+        self.knowledge_acceptance_history_path = self.app_dir / "knowledge_acceptance_history.jsonl"
         self.conversation_store = ConversationStore(self.conversation_store_path)
         self.runtime_state_store = RuntimeStateStore(self.app_dir / "runtime_state.sqlite3")
         self.settings_store = settings_store or DesktopSettingsStore(self.app_dir / "desktop_settings.json")
@@ -1439,7 +1440,7 @@ class DesktopAppService:
         imported_files: Sequence[str] | None = None,
     ) -> dict[str, object]:
         retrieved_chunks = self.search_knowledge(query, limit=3)
-        return {
+        snapshot = {
             "imported_files": [str(item) for item in (imported_files or []) if str(item).strip()],
             "search_query": str(query),
             "retrieved_chunk_ids": [
@@ -1461,6 +1462,38 @@ class DesktopAppService:
             "knowledge_status": self.get_knowledge_status(),
             "web_build_status": "available",
         }
+        self._append_knowledge_acceptance_history(snapshot)
+        return snapshot
+
+    def list_knowledge_acceptance_history(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        safe_limit = min(max(int(limit), 1), 100)
+        events = tail_jsonl_events(limit=safe_limit, path=self.knowledge_acceptance_history_path)
+        return list(reversed(events))
+
+    def _append_knowledge_acceptance_history(self, snapshot: Mapping[str, object]) -> None:
+        knowledge_status = snapshot.get("knowledge_status")
+        status_payload = knowledge_status if isinstance(knowledge_status, Mapping) else {}
+        embedding_info = EmbeddingProviderInfo.from_index_payload(status_payload)
+        trust = build_knowledge_trust_metadata(
+            provider=status_payload.get("embedding_provider"),
+            trusted=status_payload.get("embedding_trusted"),
+            trust_status=embedding_info.trust_status,
+            trust_reason=embedding_info.trust_reason,
+        )
+        record = {
+            "created_at": utc_timestamp(),
+            "imported_files": list(snapshot.get("imported_files") or []),
+            "search_query": str(snapshot.get("search_query") or ""),
+            "retrieved_chunk_ids": list(snapshot.get("retrieved_chunk_ids") or []),
+            "knowledge_ready": bool(status_payload.get("ready", False)),
+            "embedding_provider": trust["embedding_provider"],
+            "embedding_trusted": bool(trust["embedding_trusted"]),
+            "knowledge_trust_status": str(trust["embedding_trust_status"]),
+            "web_build_status": str(snapshot.get("web_build_status") or ""),
+        }
+        self.knowledge_acceptance_history_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.knowledge_acceptance_history_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
     def get_recent_logs(self, *, limit: int = 20) -> list[dict[str, Any]]:
         policy = self.get_privacy_policy()

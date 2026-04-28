@@ -87,6 +87,7 @@ class ApiContractTests(unittest.TestCase):
             ("GET", "/api/v1/knowledge/search"): "KnowledgeSearchResult",
             ("POST", "/api/v1/knowledge/import"): "KnowledgeImportResult",
             ("POST", "/api/v1/knowledge/web-build"): "WebKnowledgeBuildResult",
+            ("GET", "/api/v1/debug/knowledge-acceptance/history"): "KnowledgeAcceptanceHistoryRecord",
             ("GET", "/api/v1/privacy/policy"): "PrivacyPolicy",
             ("PATCH", "/api/v1/privacy/policy"): "PrivacyPolicy",
             ("GET", "/api/v1/settings/safety-policy/export"): "SafetyPolicyConfig",
@@ -214,6 +215,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("settings/safety-policy.import.json", manifest["fixtures"])
         self.assertIn("settings/safety-policy.restore-defaults.json", manifest["fixtures"])
         self.assertIn("settings/safety-policy.audit.json", manifest["fixtures"])
+        self.assertIn("knowledge/knowledge.acceptance-history.json", manifest["fixtures"])
 
         dashboard_fixture = json.loads((output_dir / "home" / "dashboard.summary.json").read_text(encoding="utf-8"))
         self.assertTrue(dashboard_fixture["success"])

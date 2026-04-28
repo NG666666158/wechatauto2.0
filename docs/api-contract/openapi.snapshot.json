@@ -1067,6 +1067,48 @@
         "title": "ApiResponse[list[IdentityDraftData]]",
         "type": "object"
       },
+      "ApiResponse_list_KnowledgeAcceptanceHistoryRecordData__": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/KnowledgeAcceptanceHistoryRecordData"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiErrorPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "default": "",
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ApiResponse[list[KnowledgeAcceptanceHistoryRecordData]]",
+        "type": "object"
+      },
       "ApiResponse_list_KnowledgeSearchResultData__": {
         "properties": {
           "data": {
@@ -1760,6 +1802,67 @@
           }
         },
         "title": "IdentityDraftData",
+        "type": "object"
+      },
+      "KnowledgeAcceptanceHistoryRecordData": {
+        "properties": {
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string"
+          },
+          "embedding_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Provider"
+          },
+          "embedding_trusted": {
+            "default": false,
+            "title": "Embedding Trusted",
+            "type": "boolean"
+          },
+          "imported_files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Imported Files",
+            "type": "array"
+          },
+          "knowledge_ready": {
+            "default": false,
+            "title": "Knowledge Ready",
+            "type": "boolean"
+          },
+          "knowledge_trust_status": {
+            "default": "unknown",
+            "title": "Knowledge Trust Status",
+            "type": "string"
+          },
+          "retrieved_chunk_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Retrieved Chunk Ids",
+            "type": "array"
+          },
+          "search_query": {
+            "default": "",
+            "title": "Search Query",
+            "type": "string"
+          },
+          "web_build_status": {
+            "default": "",
+            "title": "Web Build Status",
+            "type": "string"
+          }
+        },
+        "title": "KnowledgeAcceptanceHistoryRecordData",
         "type": "object"
       },
       "KnowledgeAcceptanceSnapshotData": {
@@ -4113,6 +4216,51 @@
           }
         },
         "summary": "Knowledge Acceptance",
+        "tags": [
+          "debug"
+        ]
+      }
+    },
+    "/api/v1/debug/knowledge-acceptance/history": {
+      "get": {
+        "operationId": "knowledge_acceptance_history_api_v1_debug_knowledge_acceptance_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_KnowledgeAcceptanceHistoryRecordData__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Knowledge Acceptance History",
         "tags": [
           "debug"
         ]

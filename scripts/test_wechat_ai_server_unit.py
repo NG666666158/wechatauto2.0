@@ -480,6 +480,21 @@ class FakeDesktopService:
             "web_build_status": "built",
         }
 
+    def list_knowledge_acceptance_history(self, *, limit: int = 20) -> list[dict[str, object]]:
+        return [
+            {
+                "created_at": "2026-04-25T09:45:00Z",
+                "imported_files": ["policy.txt"],
+                "search_query": "璇曠敤鏀跨瓥",
+                "retrieved_chunk_ids": ["chunk_001"],
+                "knowledge_ready": True,
+                "embedding_provider": "local",
+                "embedding_trusted": True,
+                "knowledge_trust_status": "trusted",
+                "web_build_status": "built",
+            }
+        ][:limit]
+
     def search_knowledge(self, query: str, *, limit: int = 3) -> list[dict[str, object]]:
         return [
             {
@@ -679,6 +694,7 @@ def test_openapi_schema_is_available() -> None:
     assert "/api/v1/dashboard/summary" in payload["paths"]
     assert "/api/v1/debug/prompt-preview" in payload["paths"]
     assert "/api/v1/debug/knowledge-acceptance" in payload["paths"]
+    assert "/api/v1/debug/knowledge-acceptance/history" in payload["paths"]
     assert "/api/v1/shell/tray-state" in payload["paths"]
     assert "/api/v1/shell/schedule-status" in payload["paths"]
     assert "/api/v1/shell/schedule/tick" in payload["paths"]
@@ -909,6 +925,19 @@ def test_debug_knowledge_acceptance_endpoint_is_available() -> None:
     assert payload["data"]["imported_files"] == ["policy.txt"]
     assert payload["data"]["search_query"] == "试用政策"
     assert payload["data"]["retrieved_chunk_ids"] == ["chunk_001"]
+
+def test_debug_knowledge_acceptance_history_endpoint_is_available() -> None:
+    from wechat_ai.server import create_app
+
+    client = TestClient(create_app(desktop_service=FakeDesktopService()))
+    response = client.get("/api/v1/debug/knowledge-acceptance/history", params={"limit": 5})
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["success"] is True
+    assert payload["data"][0]["search_query"] == "璇曠敤鏀跨瓥"
+    assert payload["data"][0]["retrieved_chunk_ids"] == ["chunk_001"]
+    assert "retrieved_chunks" not in payload["data"][0]
 
 
 def test_background_event_relay_primes_bus_without_per_client_sync_calls() -> None:

@@ -36,6 +36,7 @@ def build_api_fixtures() -> dict[str, dict[str, object]]:
         DashboardSummaryData,
         IdentityCandidateData,
         IdentityDraftData,
+        KnowledgeAcceptanceHistoryRecordData,
         KnowledgeFileImportData,
         KnowledgeImportResultData,
         KnowledgeSearchResultData,
@@ -280,6 +281,22 @@ def build_api_fixtures() -> dict[str, dict[str, object]]:
                 status="built",
             ).model_dump(mode="json"),
             trace_id="fixture-knowledge-web-build",
+        ),
+        "knowledge/knowledge.acceptance-history.json": success_response(
+            [
+                KnowledgeAcceptanceHistoryRecordData(
+                    created_at="2026-04-25T09:45:00Z",
+                    imported_files=["policy.txt"],
+                    search_query="trial policy",
+                    retrieved_chunk_ids=["chunk_001"],
+                    knowledge_ready=True,
+                    embedding_provider="local",
+                    embedding_trusted=True,
+                    knowledge_trust_status="trusted",
+                    web_build_status="available",
+                ).model_dump(mode="json")
+            ],
+            trace_id="fixture-knowledge-acceptance-history",
         ),
         "settings/settings.get.json": success_response(settings.model_dump(mode="json"), trace_id="fixture-settings-get"),
         "settings/safety-policy.export.json": success_response(

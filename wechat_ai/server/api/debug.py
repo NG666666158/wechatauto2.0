@@ -6,6 +6,7 @@ from wechat_ai.server.api._service import desktop_service
 from wechat_ai.server.core import success_response
 from wechat_ai.server.schemas import (
     ApiResponse,
+    KnowledgeAcceptanceHistoryRecordData,
     KnowledgeAcceptanceSnapshotData,
     PromptAcceptancePreviewData,
 )
@@ -46,4 +47,16 @@ def knowledge_acceptance(
         q,
         imported_files=imported_files,
     )
+    return success_response(data, trace_id=request.state.trace_id)
+
+
+@router.get(
+    "/knowledge-acceptance/history",
+    response_model=ApiResponse[list[KnowledgeAcceptanceHistoryRecordData]],
+)
+def knowledge_acceptance_history(
+    request: Request,
+    limit: int = Query(20, ge=1, le=100),
+) -> dict[str, object]:
+    data = desktop_service(request).list_knowledge_acceptance_history(limit=limit)
     return success_response(data, trace_id=request.state.trace_id)

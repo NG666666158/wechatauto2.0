@@ -1394,6 +1394,31 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_knowledge_acceptance_snapshot_writes_compact_history(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_knowledge_acceptance_history")
+        try:
+            source = temp_dir / "policy.txt"
+            source.write_text("trial policy supports 7 days after customer registration", encoding="utf-8")
+            service = DesktopAppService(data_root=temp_dir)
+            service.import_knowledge_files([source])
+
+            snapshot = service.build_knowledge_acceptance_snapshot("璇曠敤鏀跨瓥", imported_files=[source.name])
+            history = service.list_knowledge_acceptance_history(limit=5)
+
+            self.assertEqual(len(history), 1)
+            record = history[0]
+            self.assertEqual(record["search_query"], snapshot["search_query"])
+            self.assertEqual(record["imported_files"], [source.name])
+            self.assertEqual(record["retrieved_chunk_ids"], snapshot["retrieved_chunk_ids"])
+            self.assertIn(record["knowledge_trust_status"], {"fake", "trusted", "untrusted", "unknown"})
+            self.assertIn("created_at", record)
+            self.assertNotIn("retrieved_chunks", record)
+            self.assertNotIn("text", record)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_recent_logs_privacy_policy_and_environment_are_available(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 

@@ -1,0 +1,22 @@
+{
+  "data": [
+    {
+      "created_at": "2026-04-25T09:45:00Z",
+      "embedding_provider": "local",
+      "embedding_trusted": true,
+      "imported_files": [
+        "policy.txt"
+      ],
+      "knowledge_ready": true,
+      "knowledge_trust_status": "trusted",
+      "retrieved_chunk_ids": [
+        "chunk_001"
+      ],
+      "search_query": "trial policy",
+      "web_build_status": "available"
+    }
+  ],
+  "error": null,
+  "success": true,
+  "trace_id": "fixture-knowledge-acceptance-history"
+}
