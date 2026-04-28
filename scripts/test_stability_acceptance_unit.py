@@ -23,6 +23,7 @@ class StabilityAcceptanceTests(unittest.TestCase):
         self.assertTrue(report["safe_read_only"])
         self.assertTrue(report["does_not_send_messages"])
         self.assertTrue(report["accepted"])
+        self.assertTrue(report["checks"]["source_contracts"]["rag_trust_diagnostics"]["tokens_present"])
         self.assertEqual(report["failures"], [])
 
     def test_stability_acceptance_http_probe_checks_required_fields(self) -> None:
@@ -46,6 +47,7 @@ class StabilityAcceptanceTests(unittest.TestCase):
         self.assertTrue(report["checks"]["http_contracts"]["dashboard_summary"]["required_fields_present"])
         self.assertTrue(report["checks"]["http_contracts"]["send_uncertain_metrics"]["required_fields_present"])
         self.assertTrue(report["checks"]["http_contracts"]["knowledge_acceptance"]["required_fields_present"])
+        self.assertTrue(report["checks"]["http_contracts"]["knowledge_trust_diagnostics"]["required_fields_present"])
 
     def test_stability_acceptance_cli_outputs_json(self) -> None:
         result = subprocess.run(
@@ -97,6 +99,15 @@ class _StabilityApiHandler(BaseHTTPRequestHandler):
                 "data": {
                     "retrieved_chunk_ids": [],
                     "knowledge_status": {"ready": False},
+                },
+            }
+        if path.startswith("/api/v1/knowledge/trust-diagnostics"):
+            return {
+                "success": True,
+                "data": {
+                    "trust_status": "fake",
+                    "blocked_for_real_send": True,
+                    "recommended_actions": ["rebuild_with_trusted_embeddings"],
                 },
             }
         return {"success": False, "error": {"code": "NOT_FOUND", "message": path}}

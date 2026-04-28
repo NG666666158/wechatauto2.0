@@ -75,6 +75,17 @@ export type KnowledgeStatus = {
   supported_extensions: string[]
 }
 
+export type KnowledgeTrustDiagnostics = {
+  ready: boolean
+  embedding_provider: string | null
+  embedding_trusted: boolean
+  trust_status: "trusted" | "fake" | "untrusted" | "unknown"
+  trust_reason: string
+  real_send_enabled: boolean
+  blocked_for_real_send: boolean
+  recommended_actions: string[]
+}
+
 export type KnowledgeAcceptanceHistoryRecord = {
   created_at: string
   imported_files: string[]
@@ -556,6 +567,7 @@ export const apiClient = {
   getGlobalSelfIdentity: () => request<SelfIdentity>("/identity/self/global"),
   updateGlobalSelfIdentity: (patchBody: SelfIdentityPatch) => patch<SelfIdentity>("/identity/self/global", patchBody),
   getKnowledgeStatus: () => request<KnowledgeStatus>("/knowledge/status"),
+  getKnowledgeTrustDiagnostics: () => request<KnowledgeTrustDiagnostics>("/knowledge/trust-diagnostics"),
   getKnowledgeAcceptanceHistory: (limit = 20) =>
     request<KnowledgeAcceptanceHistoryRecord[]>(withQuery("/debug/knowledge-acceptance/history", { limit })),
   buildKnowledgeAcceptanceSnapshot: (query: string) =>

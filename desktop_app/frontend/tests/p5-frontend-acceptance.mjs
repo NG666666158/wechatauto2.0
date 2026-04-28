@@ -62,6 +62,8 @@ const checks = [
         "importKnowledgeFiles",
         "buildWebKnowledgeFromDocuments",
         "getKnowledgeAcceptanceHistory",
+        "getKnowledgeTrustDiagnostics",
+        "KnowledgeTrustDiagnostics",
         "KnowledgeAcceptanceHistoryRecord",
         "getRecentLogs",
         "RecentLogFilters",
@@ -287,6 +289,22 @@ const checks = [
         source.includes("imported_files") &&
         !source.includes("history.retrieved_chunks") &&
         apiSource.includes('"/debug/knowledge-acceptance/history"')
+      )
+    },
+  },
+  {
+    name: "knowledge page renders trust diagnostics gate",
+    run: () => {
+      const source = read("app/knowledge/page.tsx")
+      const apiSource = read("lib/api.ts")
+      return (
+        source.includes("KnowledgeTrustGate") &&
+        source.includes("trustDiagnostics") &&
+        source.includes("blocked_for_real_send") &&
+        source.includes("recommended_actions") &&
+        source.includes("rebuild_with_trusted_embeddings") &&
+        source.includes("route_replies_to_manual_review") &&
+        apiSource.includes('"/knowledge/trust-diagnostics"')
       )
     },
   },

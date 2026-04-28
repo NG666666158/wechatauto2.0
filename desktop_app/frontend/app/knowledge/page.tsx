@@ -5,7 +5,7 @@ import { AppShell } from "@/components/app-shell"
 import { EmptyState, ErrorState, LoadingState } from "@/components/api-state"
 import { useServerEvents } from "@/hooks/use-server-events"
 import { apiClient } from "@/lib/api"
-import type { KnowledgeAcceptanceHistoryRecord, KnowledgeImportResult, KnowledgeSearchResult, KnowledgeStatus, WebKnowledgeBuildResult } from "@/lib/api"
+import type { KnowledgeAcceptanceHistoryRecord, KnowledgeImportResult, KnowledgeSearchResult, KnowledgeStatus, KnowledgeTrustDiagnostics, WebKnowledgeBuildResult } from "@/lib/api"
 import { BookOpen, Cloud, Database, FileText, History, RefreshCw, Search, ShieldCheck, UploadCloud } from "lucide-react"
 
 export default function KnowledgePage() {
@@ -14,6 +14,7 @@ export default function KnowledgePage() {
   const [filePathsText, setFilePathsText] = useState("")
   const [searchResults, setSearchResults] = useState<KnowledgeSearchResult[]>([])
   const [acceptanceHistory, setAcceptanceHistory] = useState<KnowledgeAcceptanceHistoryRecord[]>([])
+  const [trustDiagnostics, setTrustDiagnostics] = useState<KnowledgeTrustDiagnostics | null>(null)
   const [importResult, setImportResult] = useState<KnowledgeImportResult | null>(null)
   const [webResult, setWebResult] = useState<WebKnowledgeBuildResult | null>(null)
   const [loadingStatus, setLoadingStatus] = useState(true)
@@ -47,6 +48,15 @@ export default function KnowledgePage() {
     }
   }, [])
 
+  const loadTrustDiagnostics = useCallback(async () => {
+    try {
+      const response = await apiClient.getKnowledgeTrustDiagnostics()
+      setTrustDiagnostics(response.success && response.data ? response.data : null)
+    } catch {
+      setTrustDiagnostics(null)
+    }
+  }, [])
+
   async function searchKnowledge() {
     const keyword = query.trim()
     if (!keyword) {
@@ -64,6 +74,7 @@ export default function KnowledgePage() {
       }
       setSearchResults(response.data)
       await loadAcceptanceHistory()
+      await loadTrustDiagnostics()
       setNotice(`已返回 ${response.data.length} 条检索结果。`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "无法连接检索接口")
@@ -91,7 +102,7 @@ export default function KnowledgePage() {
       setNotice(`RAG acceptance recorded: ${response.data.retrieved_chunk_ids.length} chunks`)
       await loadStatus()
       await loadAcceptanceHistory()
-      await loadAcceptanceHistory()
+      await loadTrustDiagnostics()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Knowledge acceptance API unavailable")
     } finally {
@@ -118,6 +129,7 @@ export default function KnowledgePage() {
       setNotice(response.data.index_rebuilt ? "文件已入库并重建索引。" : "文件已提交入库。")
       await loadStatus()
       await loadAcceptanceHistory()
+      await loadTrustDiagnostics()
     } catch (err) {
       setError(err instanceof Error ? err.message : "无法连接文件入库接口")
     } finally {
@@ -143,6 +155,7 @@ export default function KnowledgePage() {
       setWebResult(response.data)
       setNotice(`联网扩库任务完成：${response.data.status}`)
       await loadStatus()
+      await loadTrustDiagnostics()
     } catch (err) {
       setError(err instanceof Error ? err.message : "无法连接联网扩库接口")
     } finally {
@@ -160,11 +173,13 @@ export default function KnowledgePage() {
   useEffect(() => {
     void loadStatus()
     void loadAcceptanceHistory()
-  }, [loadStatus, loadAcceptanceHistory])
+    void loadTrustDiagnostics()
+  }, [loadStatus, loadAcceptanceHistory, loadTrustDiagnostics])
 
   useServerEvents(() => {
     void loadStatus()
     void loadAcceptanceHistory()
+    void loadTrustDiagnostics()
   }, { eventTypes: ["knowledge.progress"], replay: 1 })
 
   return (
@@ -174,6 +189,8 @@ export default function KnowledgePage() {
           {error ? <ErrorState message={error} /> : null}
           {notice ? <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
           {loadingStatus ? <LoadingState label="正在读取知识库状态" /> : <StatusPanel status={status} onRefresh={loadStatus} />}
+
+          <KnowledgeTrustGate diagnostics={trustDiagnostics} />
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center gap-2 text-[15px] font-semibold text-slate-800">
@@ -275,6 +292,34 @@ export default function KnowledgePage() {
         </section>
       </div>
     </AppShell>
+  )
+}
+
+function KnowledgeTrustGate({ diagnostics }: { diagnostics: KnowledgeTrustDiagnostics | null }) {
+  if (!diagnostics) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="text-sm font-semibold text-slate-800">RAG Trust Gate</div>
+        <div className="mt-2 text-xs text-slate-500">Diagnostics unavailable.</div>
+      </div>
+    )
+  }
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="text-sm font-semibold text-slate-800">RAG Trust Gate</div>
+        <span className={`rounded-md border px-2 py-1 text-xs font-medium ${trustBadgeClass(diagnostics.trust_status)}`}>
+          {formatKnowledgeTrustStatus(diagnostics.trust_status)}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs text-slate-500">
+        <EvidenceCell label="provider" value={diagnostics.embedding_provider || "-"} />
+        <EvidenceCell label="real_send" value={diagnostics.real_send_enabled ? "enabled" : "disabled"} />
+        <EvidenceCell label="blocked_for_real_send" value={diagnostics.blocked_for_real_send ? "blocked" : "not blocked"} />
+        <EvidenceCell label="reason" value={diagnostics.trust_reason || "-"} />
+      </div>
+      <HistoryTokenRow label="recommended_actions" values={diagnostics.recommended_actions.map(formatRecommendedAction)} />
+    </div>
   )
 }
 
@@ -400,6 +445,15 @@ function formatKnowledgeTrustReason(reason: string) {
   if (reason === "embedding_trust_not_declared") return "embedding_trust_not_declared"
   if (reason === "embedding_provider_missing") return "embedding_provider_missing"
   return reason
+}
+
+function formatRecommendedAction(action: string) {
+  if (action === "rebuild_with_trusted_embeddings") return "rebuild_with_trusted_embeddings"
+  if (action === "route_replies_to_manual_review") return "route_replies_to_manual_review"
+  if (action === "disable_real_send_until_trusted") return "disable_real_send_until_trusted"
+  if (action === "import_knowledge_files") return "import_knowledge_files"
+  if (action === "monitor_acceptance_history") return "monitor_acceptance_history"
+  return action
 }
 
 function EvidenceCell({ label, value }: { label: string; value: string }) {

@@ -1425,6 +1425,32 @@ class DesktopAppService:
     def get_knowledge_status(self) -> dict[str, Any]:
         return asdict(self.knowledge_importer.get_status())
 
+    def get_knowledge_trust_diagnostics(self) -> dict[str, Any]:
+        status = self.knowledge_importer.get_status()
+        trust = self._knowledge_embedding_trust_metadata(status=status)
+        real_send_enabled = bool(self.get_settings().real_send_enabled)
+        blocked_for_real_send = bool(status.ready and real_send_enabled and trust["embedding_trust_status"] != "trusted")
+        recommended_actions: list[str] = []
+        if not status.ready:
+            recommended_actions.append("import_knowledge_files")
+        if trust["embedding_trust_status"] != "trusted":
+            recommended_actions.append("rebuild_with_trusted_embeddings")
+            recommended_actions.append("route_replies_to_manual_review")
+        if blocked_for_real_send:
+            recommended_actions.append("disable_real_send_until_trusted")
+        if not recommended_actions:
+            recommended_actions.append("monitor_acceptance_history")
+        return {
+            "ready": bool(status.ready),
+            "embedding_provider": trust["embedding_provider"],
+            "embedding_trusted": bool(trust["embedding_trusted"]),
+            "trust_status": str(trust["embedding_trust_status"]),
+            "trust_reason": str(trust["embedding_trust_reason"]),
+            "real_send_enabled": real_send_enabled,
+            "blocked_for_real_send": blocked_for_real_send,
+            "recommended_actions": recommended_actions,
+        }
+
     def build_web_knowledge_from_documents(
         self,
         file_paths: Sequence[Path | str],

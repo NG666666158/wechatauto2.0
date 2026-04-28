@@ -41,6 +41,7 @@ def build_api_fixtures() -> dict[str, dict[str, object]]:
         KnowledgeImportResultData,
         KnowledgeSearchResultData,
         KnowledgeStatusData,
+        KnowledgeTrustDiagnosticsData,
         LogsSummaryData,
         PrivacyPolicyData,
         ReplySuggestionData,
@@ -248,6 +249,19 @@ def build_api_fixtures() -> dict[str, dict[str, object]]:
         "knowledge/knowledge.status.json": success_response(
             dashboard.knowledge.model_dump(mode="json"),
             trace_id="fixture-knowledge-status",
+        ),
+        "knowledge/knowledge.trust-diagnostics.json": success_response(
+            KnowledgeTrustDiagnosticsData(
+                ready=True,
+                embedding_provider="FakeEmbeddings",
+                embedding_trusted=False,
+                trust_status="fake",
+                trust_reason="fake_embedding_provider",
+                real_send_enabled=True,
+                blocked_for_real_send=True,
+                recommended_actions=["rebuild_with_trusted_embeddings", "route_replies_to_manual_review"],
+            ).model_dump(mode="json"),
+            trace_id="fixture-knowledge-trust-diagnostics",
         ),
         "knowledge/knowledge.search.json": success_response(
             [

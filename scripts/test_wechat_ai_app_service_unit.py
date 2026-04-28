@@ -1419,6 +1419,28 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_knowledge_trust_diagnostics_explains_real_send_block(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_knowledge_trust_diagnostics")
+        try:
+            source = temp_dir / "policy.txt"
+            source.write_text("trial policy supports 7 days after customer registration", encoding="utf-8")
+            service = DesktopAppService(data_root=temp_dir)
+            service.import_knowledge_files([source])
+            service.update_settings({"real_send_enabled": True})
+
+            diagnostics = service.get_knowledge_trust_diagnostics()
+
+            self.assertEqual(diagnostics["trust_status"], "fake")
+            self.assertEqual(diagnostics["trust_reason"], "fake_embedding_provider")
+            self.assertTrue(diagnostics["real_send_enabled"])
+            self.assertTrue(diagnostics["blocked_for_real_send"])
+            self.assertIn("rebuild_with_trusted_embeddings", diagnostics["recommended_actions"])
+            self.assertIn("route_replies_to_manual_review", diagnostics["recommended_actions"])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_recent_logs_privacy_policy_and_environment_are_available(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 

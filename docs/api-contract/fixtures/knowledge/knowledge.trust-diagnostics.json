@@ -1,0 +1,18 @@
+{
+  "data": {
+    "blocked_for_real_send": true,
+    "embedding_provider": "FakeEmbeddings",
+    "embedding_trusted": false,
+    "ready": true,
+    "real_send_enabled": true,
+    "recommended_actions": [
+      "rebuild_with_trusted_embeddings",
+      "route_replies_to_manual_review"
+    ],
+    "trust_reason": "fake_embedding_provider",
+    "trust_status": "fake"
+  },
+  "error": null,
+  "success": true,
+  "trace_id": "fixture-knowledge-trust-diagnostics"
+}

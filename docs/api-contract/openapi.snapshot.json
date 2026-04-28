@@ -327,6 +327,44 @@
         "title": "ApiResponse[KnowledgeStatusData]",
         "type": "object"
       },
+      "ApiResponse_KnowledgeTrustDiagnosticsData_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeTrustDiagnosticsData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiErrorPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "default": "",
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ApiResponse[KnowledgeTrustDiagnosticsData]",
+        "type": "object"
+      },
       "ApiResponse_LogsSummaryData_": {
         "properties": {
           "data": {
@@ -2124,6 +2162,60 @@
           }
         },
         "title": "KnowledgeStatusData",
+        "type": "object"
+      },
+      "KnowledgeTrustDiagnosticsData": {
+        "properties": {
+          "blocked_for_real_send": {
+            "default": false,
+            "title": "Blocked For Real Send",
+            "type": "boolean"
+          },
+          "embedding_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Provider"
+          },
+          "embedding_trusted": {
+            "default": false,
+            "title": "Embedding Trusted",
+            "type": "boolean"
+          },
+          "ready": {
+            "default": false,
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "real_send_enabled": {
+            "default": false,
+            "title": "Real Send Enabled",
+            "type": "boolean"
+          },
+          "recommended_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recommended Actions",
+            "type": "array"
+          },
+          "trust_reason": {
+            "default": "",
+            "title": "Trust Reason",
+            "type": "string"
+          },
+          "trust_status": {
+            "default": "unknown",
+            "title": "Trust Status",
+            "type": "string"
+          }
+        },
+        "title": "KnowledgeTrustDiagnosticsData",
         "type": "object"
       },
       "LogsSummaryData": {
@@ -5258,6 +5350,27 @@
           }
         },
         "summary": "Knowledge Status",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/v1/knowledge/trust-diagnostics": {
+      "get": {
+        "operationId": "knowledge_trust_diagnostics_api_v1_knowledge_trust_diagnostics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeTrustDiagnosticsData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Knowledge Trust Diagnostics",
         "tags": [
           "knowledge"
         ]

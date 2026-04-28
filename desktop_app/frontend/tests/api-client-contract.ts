@@ -11,6 +11,7 @@ import type {
   IdentityCandidate,
   IdentityDraft,
   KnowledgeAcceptanceHistoryRecord,
+  KnowledgeTrustDiagnostics,
   KnowledgeImportResult,
   KnowledgeSearchResult,
   PrivacyPolicy,
@@ -121,6 +122,9 @@ async function assertApiClientContract() {
     identity_facts: ["我是产品顾问"],
   })
   const knowledgeStatus: ApiResponse<import("@/lib/api").KnowledgeStatus> = await apiClient.getKnowledgeStatus()
+  const knowledgeTrustDiagnostics: ApiResponse<KnowledgeTrustDiagnostics> = await apiClient.getKnowledgeTrustDiagnostics()
+  const knowledgeBlockedForRealSend: boolean | undefined = knowledgeTrustDiagnostics.data?.blocked_for_real_send
+  const knowledgeRecommendedAction: string | undefined = knowledgeTrustDiagnostics.data?.recommended_actions[0]
   const embeddingProvider: string | null | undefined = knowledgeStatus.data?.embedding_provider
   const embeddingTrusted: boolean | null | undefined = knowledgeStatus.data?.embedding_trusted
   const knowledgeSearch: ApiResponse<KnowledgeSearchResult[]> = await apiClient.searchKnowledge("试用政策", 5)
@@ -225,6 +229,9 @@ async function assertApiClientContract() {
     selfIdentity,
     updatedSelfIdentity,
     knowledgeStatus,
+    knowledgeTrustDiagnostics,
+    knowledgeBlockedForRealSend,
+    knowledgeRecommendedAction,
     embeddingProvider,
     embeddingTrusted,
     knowledgeSearch,

@@ -18,6 +18,17 @@ class KnowledgeStatusData(BaseModel):
     supported_extensions: list[str] | tuple[str, ...] = Field(default_factory=list)
 
 
+class KnowledgeTrustDiagnosticsData(BaseModel):
+    ready: bool = False
+    embedding_provider: str | None = None
+    embedding_trusted: bool = False
+    trust_status: str = "unknown"
+    trust_reason: str = ""
+    real_send_enabled: bool = False
+    blocked_for_real_send: bool = False
+    recommended_actions: list[str] = Field(default_factory=list)
+
+
 class DashboardPendingData(BaseModel):
     identity_drafts: int = 0
     identity_candidates: int = 0

@@ -48,6 +48,14 @@ REQUIRED_SOURCE_TOKENS = {
             "UNTRUSTED_KNOWLEDGE_CONTEXT",
         ),
     ),
+    "rag_trust_diagnostics": (
+        ROOT / "wechat_ai" / "app" / "service.py",
+        (
+            "get_knowledge_trust_diagnostics",
+            "blocked_for_real_send",
+            "recommended_actions",
+        ),
+    ),
     "home_risk_overview": (
         ROOT / "desktop_app" / "frontend" / "app" / "page.tsx",
         (
@@ -63,6 +71,7 @@ HTTP_CHECKS = (
     ("dashboard_summary", "GET", "/dashboard/summary", ("send_uncertain",)),
     ("send_uncertain_metrics", "GET", "/jobs/send-uncertain/metrics", ("unresolved_total", "recent_24h")),
     ("safety_policy_audit", "GET", "/settings/safety-policy/audit?limit=5", ()),
+    ("knowledge_trust_diagnostics", "GET", "/knowledge/trust-diagnostics", ("trust_status", "blocked_for_real_send", "recommended_actions")),
     ("knowledge_acceptance", "GET", "/debug/knowledge-acceptance?q=试用政策", ("retrieved_chunk_ids", "knowledge_status")),
 )
 

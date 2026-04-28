@@ -84,6 +84,7 @@ class ApiContractTests(unittest.TestCase):
             ("GET", "/api/v1/identity/self/global"): "SelfIdentity",
             ("PATCH", "/api/v1/identity/self/global"): "SelfIdentity",
             ("GET", "/api/v1/knowledge/status"): "KnowledgeStatus",
+            ("GET", "/api/v1/knowledge/trust-diagnostics"): "KnowledgeTrustDiagnostics",
             ("GET", "/api/v1/knowledge/search"): "KnowledgeSearchResult",
             ("POST", "/api/v1/knowledge/import"): "KnowledgeImportResult",
             ("POST", "/api/v1/knowledge/web-build"): "WebKnowledgeBuildResult",
@@ -210,6 +211,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("messages/conversations.list.json", manifest["fixtures"])
         self.assertIn("customers/customers.list.json", manifest["fixtures"])
         self.assertIn("knowledge/knowledge.search.json", manifest["fixtures"])
+        self.assertIn("knowledge/knowledge.trust-diagnostics.json", manifest["fixtures"])
         self.assertIn("settings/settings.get.json", manifest["fixtures"])
         self.assertIn("settings/safety-policy.export.json", manifest["fixtures"])
         self.assertIn("settings/safety-policy.import.json", manifest["fixtures"])

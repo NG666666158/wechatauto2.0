@@ -10,6 +10,7 @@ from wechat_ai.server.schemas import (
     KnowledgeImportResultData,
     KnowledgeSearchResultData,
     KnowledgeStatusData,
+    KnowledgeTrustDiagnosticsData,
     WebKnowledgeBuildResultData,
 )
 from wechat_ai.server.schemas.frontend import KnowledgeImportRequest, WebKnowledgeBuildRequest
@@ -20,6 +21,11 @@ router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 @router.get("/status", response_model=ApiResponse[KnowledgeStatusData])
 def knowledge_status(request: Request) -> dict[str, object]:
     return success_response(desktop_service(request).get_knowledge_status(), trace_id=request.state.trace_id)
+
+
+@router.get("/trust-diagnostics", response_model=ApiResponse[KnowledgeTrustDiagnosticsData])
+def knowledge_trust_diagnostics(request: Request) -> dict[str, object]:
+    return success_response(desktop_service(request).get_knowledge_trust_diagnostics(), trace_id=request.state.trace_id)
 
 
 @router.get("/search", response_model=ApiResponse[list[KnowledgeSearchResultData]])
