@@ -169,6 +169,22 @@ class LoggingAndMemoryTests(unittest.TestCase):
         self.assertTrue(first["timestamp"].endswith("Z"))
         self.assertEqual(len(tail_jsonl_events(limit=1, path=log_path)), 1)
 
+    def test_tail_jsonl_events_skips_corrupt_partial_lines(self) -> None:
+        temp_dir = TMP_ROOT / "observability_unit_logs" / str(uuid4())
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        log_path = temp_dir / "runtime.jsonl"
+        log_path.write_text(
+            '{"timestamp":"2026-04-28T00:00:00Z","event_type":"ok"}\n'
+            'partial broken line\n'
+            '{"timestamp":"2026-04-28T00:00:01Z","event_type":"still_ok"}\n'
+            '{"timestamp":"2026-04-28T00:00:02Z","event_type":"broken"\n',
+            encoding="utf-8",
+        )
+
+        events = tail_jsonl_events(limit=10, path=log_path)
+
+        self.assertEqual([event["event_type"] for event in events], ["ok", "still_ok"])
+
     def test_jsonl_event_logger_redacts_sensitive_values_and_rotates(self) -> None:
         temp_dir = TMP_ROOT / "observability_unit_logs" / str(uuid4())
         temp_dir.mkdir(parents=True, exist_ok=True)

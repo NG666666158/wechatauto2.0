@@ -104,7 +104,12 @@ def read_jsonl_events(path: Path | None = None) -> list[dict[str, Any]]:
             stripped = line.strip()
             if not stripped:
                 continue
-            events.append(json.loads(stripped))
+            try:
+                event = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(event, dict):
+                events.append(event)
     return events
 
 
