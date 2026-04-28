@@ -50,6 +50,7 @@ const checks = [
         "approveReplyJob",
         "cancelReplyJob",
         "listSendJobs",
+        "listSendAttempts",
         "resolveSendJob",
         "listUncertainSendJobs",
         "listCustomers",
@@ -74,6 +75,7 @@ const checks = [
       return (
         source.includes("listReplyJobs") &&
         source.includes("listUncertainSendJobs") &&
+        source.includes("listSendAttempts") &&
         source.includes("approveReplyJob") &&
         source.includes("cancelReplyJob") &&
         source.includes("resolveSendJob") &&
@@ -84,6 +86,20 @@ const checks = [
         source.includes("updateConversationControl") &&
         source.includes("SEND_UNCERTAIN") &&
         !source.includes("sendConversationReply")
+      )
+    },
+  },
+  {
+    name: "pending page renders send attempts evidence",
+    run: () => {
+      const source = read("app/pending/page.tsx")
+      return (
+        source.includes("SendAttemptList") &&
+        source.includes("send_attempts") &&
+        source.includes("attempt_no") &&
+        source.includes("error_code") &&
+        source.includes("before_screenshot") &&
+        source.includes("after_screenshot")
       )
     },
   },

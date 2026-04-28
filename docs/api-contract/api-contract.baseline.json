@@ -3,7 +3,7 @@
   "api_version": "0.1.0",
   "base_path": "/api/v1",
   "contract_version": "p4-baseline-v1",
-  "endpoint_count": 42,
+  "endpoint_count": 49,
   "endpoints": [
     {
       "id": "get_api_v1_controls_conversations_conversation_id",
@@ -279,6 +279,111 @@
       "summary": "Update Global Self Identity",
       "tags": [
         "identity"
+      ]
+    },
+    {
+      "id": "get_api_v1_jobs_reply",
+      "method": "GET",
+      "path": "/api/v1/jobs/reply",
+      "request_schema": "",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "Response List Reply Jobs Api V1 Jobs Reply Get",
+      "summary": "List Reply Jobs",
+      "tags": [
+        "jobs"
+      ]
+    },
+    {
+      "id": "post_api_v1_jobs_reply_reply_job_id_approve",
+      "method": "POST",
+      "path": "/api/v1/jobs/reply/{reply_job_id}/approve",
+      "request_schema": "Payload",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "Response Approve Reply Job Api V1 Jobs Reply  Reply Job Id  Approve Post",
+      "summary": "Approve Reply Job",
+      "tags": [
+        "jobs"
+      ]
+    },
+    {
+      "id": "post_api_v1_jobs_reply_reply_job_id_cancel",
+      "method": "POST",
+      "path": "/api/v1/jobs/reply/{reply_job_id}/cancel",
+      "request_schema": "Payload",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "Response Cancel Reply Job Api V1 Jobs Reply  Reply Job Id  Cancel Post",
+      "summary": "Cancel Reply Job",
+      "tags": [
+        "jobs"
+      ]
+    },
+    {
+      "id": "get_api_v1_jobs_send",
+      "method": "GET",
+      "path": "/api/v1/jobs/send",
+      "request_schema": "",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "Response List Send Jobs Api V1 Jobs Send Get",
+      "summary": "List Send Jobs",
+      "tags": [
+        "jobs"
+      ]
+    },
+    {
+      "id": "get_api_v1_jobs_send_uncertain",
+      "method": "GET",
+      "path": "/api/v1/jobs/send-uncertain",
+      "request_schema": "",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "Response List Uncertain Send Jobs Api V1 Jobs Send Uncertain Get",
+      "summary": "List Uncertain Send Jobs",
+      "tags": [
+        "jobs"
+      ]
+    },
+    {
+      "id": "get_api_v1_jobs_send_send_job_id_attempts",
+      "method": "GET",
+      "path": "/api/v1/jobs/send/{send_job_id}/attempts",
+      "request_schema": "",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "Response List Send Attempts Api V1 Jobs Send  Send Job Id  Attempts Get",
+      "summary": "List Send Attempts",
+      "tags": [
+        "jobs"
+      ]
+    },
+    {
+      "id": "post_api_v1_jobs_send_send_job_id_resolve",
+      "method": "POST",
+      "path": "/api/v1/jobs/send/{send_job_id}/resolve",
+      "request_schema": "SendResolveRequest",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "Response Resolve Uncertain Send Job Api V1 Jobs Send  Send Job Id  Resolve Post",
+      "summary": "Resolve Uncertain Send Job",
+      "tags": [
+        "jobs"
       ]
     },
     {
@@ -648,7 +753,7 @@
       "/api/v1/errors/catalog"
     ]
   },
-  "schema_count": 78,
+  "schema_count": 81,
   "schemas": [
     "ApiErrorPayload",
     "ApiResponse_ConversationControlData_",
@@ -706,6 +811,8 @@
     "PrivacyPolicyPatchRequest",
     "PromptAcceptancePreviewData",
     "PromptAcceptanceSelfIdentityData",
+    "ReplyApproveRequest",
+    "ReplyCancelRequest",
     "ReplySuggestionData",
     "ReplySuggestionRequest",
     "RetentionApplyResultData",
@@ -720,6 +827,7 @@
     "SelfIdentityPatchRequest",
     "SendReplyRequest",
     "SendReplyResultData",
+    "SendResolveRequest",
     "SettingsData",
     "SettingsPatchRequest",
     "ValidationError",

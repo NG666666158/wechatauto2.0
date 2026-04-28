@@ -18,6 +18,7 @@ import type {
   RuntimeAction,
   RuntimeStatus,
   SendJob,
+  SendAttempt,
   SendReplyResult,
   SelfIdentity,
   SelfIdentityPatch,
@@ -55,6 +56,7 @@ async function assertApiClientContract() {
   const replyAuditReviewer: string | null | undefined = approvedReplyJob.data?.reviewed_by
   const replyAuditTime: string | null | undefined = approvedReplyJob.data?.reviewed_at
   const sendJobs: ApiResponse<SendJob[]> = await apiClient.listSendJobs("SEND_UNCERTAIN", 20)
+  const sendAttempts: ApiResponse<SendAttempt[]> = await apiClient.listSendAttempts("send_001", 20)
   const uncertainSendJobs: ApiResponse<SendJob[]> = await apiClient.listUncertainSendJobs(20)
   const uncertainSendEvidence: SendJob["confirmation_result"] = {
     reason: "send confirmation timed out",
@@ -120,6 +122,7 @@ async function assertApiClientContract() {
     replyAuditReviewer,
     replyAuditTime,
     sendJobs,
+    sendAttempts,
     uncertainSendJobs,
     uncertainSendEvidence,
     resolvedSendJob,

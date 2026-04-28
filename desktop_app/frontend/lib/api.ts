@@ -280,6 +280,19 @@ export type SendJob = {
   updated_at?: string | null
 }
 
+export type SendAttempt = {
+  attempt_id: string
+  send_job_id: string
+  attempt_no: number
+  status: string
+  error_code?: string | null
+  error_message?: string | null
+  before_screenshot?: string | null
+  after_screenshot?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+}
+
 export type ReplyJobApproveBody = {
   draft_reply?: string
   reason?: string
@@ -433,6 +446,8 @@ export const apiClient = {
     post<ReplyJob>(`/jobs/reply/${encodeURIComponent(replyJobId)}/cancel`, body),
   listSendJobs: (status?: string, limit = 100) =>
     request<SendJob[]>(withQuery("/jobs/send", { status, limit })),
+  listSendAttempts: (sendJobId: string, limit = 100) =>
+    request<SendAttempt[]>(withQuery(`/jobs/send/${encodeURIComponent(sendJobId)}/attempts`, { limit })),
   resolveSendJob: (sendJobId: string, body: SendJobResolveBody) =>
     post<SendJob>(`/jobs/send/${encodeURIComponent(sendJobId)}/resolve`, body),
   listUncertainSendJobs: (limit = 100) =>

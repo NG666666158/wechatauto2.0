@@ -176,6 +176,23 @@ class FakeDesktopService:
         del limit
         return list(self.uncertain_send_jobs)
 
+    def list_send_attempts(self, send_job_id: str, *, limit: int = 100) -> list[dict[str, object]]:
+        del limit
+        return [
+            {
+                "attempt_id": "attempt_001",
+                "send_job_id": send_job_id,
+                "attempt_no": 1,
+                "status": "SEND_UNCERTAIN",
+                "error_code": "SEND_NOT_CONFIRMED",
+                "error_message": "message_not_visible",
+                "before_screenshot": "screens/before.png",
+                "after_screenshot": "screens/after.png",
+                "started_at": "2026-04-28T00:00:00Z",
+                "finished_at": "2026-04-28T00:00:01Z",
+            }
+        ]
+
     def approve_reply_job(
         self,
         reply_job_id: str,
@@ -1174,12 +1191,15 @@ def test_runtime_jobs_endpoints_expose_send_uncertain_queue() -> None:
 
     send_jobs = client.get("/api/v1/jobs/send?status=SEND_UNCERTAIN").json()
     uncertain = client.get("/api/v1/jobs/send-uncertain").json()
+    attempts = client.get("/api/v1/jobs/send/send_001/attempts").json()
     reply_jobs = client.get("/api/v1/jobs/reply").json()
 
     assert send_jobs["success"] is True
     assert send_jobs["data"][0]["send_job_id"] == "send_001"
     assert send_jobs["data"][0]["status"] == "SEND_UNCERTAIN"
     assert uncertain["data"][0]["conversation_id"] == "friend:alice"
+    assert attempts["data"][0]["attempt_id"] == "attempt_001"
+    assert attempts["data"][0]["before_screenshot"] == "screens/before.png"
     assert reply_jobs["data"][0]["reply_job_id"] == "reply_001"
 
 

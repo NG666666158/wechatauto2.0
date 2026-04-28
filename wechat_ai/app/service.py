@@ -913,6 +913,9 @@ class DesktopAppService:
     def list_send_jobs(self, *, status: str | None = None, limit: int = 100) -> list[dict[str, object]]:
         return self.runtime_state_store.list_send_jobs(status=status, limit=limit)
 
+    def list_send_attempts(self, send_job_id: str, *, limit: int = 100) -> list[dict[str, object]]:
+        return self.runtime_state_store.list_send_attempts(send_job_id, limit=limit)
+
     def list_uncertain_send_jobs(self, *, limit: int = 100) -> list[dict[str, object]]:
         return self.runtime_state_store.list_uncertain_send_jobs(limit=limit)
 

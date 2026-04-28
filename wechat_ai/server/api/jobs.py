@@ -59,6 +59,18 @@ def list_uncertain_send_jobs(
     return success_response(_service(request).list_uncertain_send_jobs(limit=limit), trace_id=request.state.trace_id)
 
 
+@router.get("/send/{send_job_id}/attempts")
+def list_send_attempts(
+    send_job_id: str,
+    request: Request,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, object]:
+    return success_response(
+        _service(request).list_send_attempts(send_job_id, limit=limit),
+        trace_id=request.state.trace_id,
+    )
+
+
 @router.post("/reply/{reply_job_id}/approve")
 def approve_reply_job(
     reply_job_id: str,

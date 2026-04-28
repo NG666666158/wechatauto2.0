@@ -1778,6 +1778,11 @@
             ],
             "title": "Embedding Provider"
           },
+          "embedding_trusted": {
+            "default": false,
+            "title": "Embedding Trusted",
+            "type": "boolean"
+          },
           "index_path": {
             "default": "",
             "title": "Index Path",
@@ -2002,6 +2007,68 @@
         "title": "PromptAcceptanceSelfIdentityData",
         "type": "object"
       },
+      "ReplyApproveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "draft_reply": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Reply"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reviewed_by": {
+            "default": "operator",
+            "maxLength": 200,
+            "title": "Reviewed By",
+            "type": "string"
+          }
+        },
+        "title": "ReplyApproveRequest",
+        "type": "object"
+      },
+      "ReplyCancelRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reviewed_by": {
+            "default": "operator",
+            "maxLength": 200,
+            "title": "Reviewed By",
+            "type": "string"
+          }
+        },
+        "title": "ReplyCancelRequest",
+        "type": "object"
+      },
       "ReplySuggestionData": {
         "properties": {
           "conversation_id": {
@@ -2197,7 +2264,7 @@
             "type": "number"
           },
           "wait_for_ui_ready_before_guardian": {
-            "default": false,
+            "default": true,
             "title": "Wait For Ui Ready Before Guardian",
             "type": "boolean"
           }
@@ -2452,6 +2519,42 @@
           }
         },
         "title": "SendReplyResultData",
+        "type": "object"
+      },
+      "SendResolveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "resolution": {
+            "enum": [
+              "confirmed",
+              "failed"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          },
+          "reviewed_by": {
+            "default": "operator",
+            "maxLength": 200,
+            "title": "Reviewed By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resolution"
+        ],
+        "title": "SendResolveRequest",
         "type": "object"
       },
       "SettingsData": {
@@ -3769,6 +3872,411 @@
         "summary": "Update Global Self Identity",
         "tags": [
           "identity"
+        ]
+      }
+    },
+    "/api/v1/jobs/reply": {
+      "get": {
+        "operationId": "list_reply_jobs_api_v1_jobs_reply_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Reply Jobs Api V1 Jobs Reply Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Reply Jobs",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/reply/{reply_job_id}/approve": {
+      "post": {
+        "operationId": "approve_reply_job_api_v1_jobs_reply__reply_job_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reply_job_id",
+            "required": true,
+            "schema": {
+              "title": "Reply Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReplyApproveRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Approve Reply Job Api V1 Jobs Reply  Reply Job Id  Approve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Reply Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/reply/{reply_job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_reply_job_api_v1_jobs_reply__reply_job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reply_job_id",
+            "required": true,
+            "schema": {
+              "title": "Reply Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReplyCancelRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cancel Reply Job Api V1 Jobs Reply  Reply Job Id  Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Reply Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/send": {
+      "get": {
+        "operationId": "list_send_jobs_api_v1_jobs_send_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Send Jobs Api V1 Jobs Send Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Send Jobs",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/send-uncertain": {
+      "get": {
+        "operationId": "list_uncertain_send_jobs_api_v1_jobs_send_uncertain_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Uncertain Send Jobs Api V1 Jobs Send Uncertain Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Uncertain Send Jobs",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/send/{send_job_id}/attempts": {
+      "get": {
+        "operationId": "list_send_attempts_api_v1_jobs_send__send_job_id__attempts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "send_job_id",
+            "required": true,
+            "schema": {
+              "title": "Send Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Send Attempts Api V1 Jobs Send  Send Job Id  Attempts Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Send Attempts",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/send/{send_job_id}/resolve": {
+      "post": {
+        "operationId": "resolve_uncertain_send_job_api_v1_jobs_send__send_job_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "send_job_id",
+            "required": true,
+            "schema": {
+              "title": "Send Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Resolve Uncertain Send Job Api V1 Jobs Send  Send Job Id  Resolve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Uncertain Send Job",
+        "tags": [
+          "jobs"
         ]
       }
     },

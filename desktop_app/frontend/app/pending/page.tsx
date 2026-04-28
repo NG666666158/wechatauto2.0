@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 import { AppShell } from "@/components/app-shell"
 import { EmptyState, ErrorState, LoadingState } from "@/components/api-state"
 import { apiClient } from "@/lib/api"
-import type { ConversationControlPatch, ReplyJob, SendJob } from "@/lib/api"
+import type { ConversationControlPatch, ReplyJob, SendAttempt, SendJob } from "@/lib/api"
 import { AlertTriangle, Bot, Check, CheckCircle2, Hand, Pause, RefreshCw, ShieldAlert, X } from "lucide-react"
 
 type ActionTarget = {
@@ -27,6 +27,7 @@ type SendActionTarget = {
 export default function PendingPage() {
   const [replyJobs, setReplyJobs] = useState<ReplyJob[]>([])
   const [sendJobs, setSendJobs] = useState<SendJob[]>([])
+  const [attemptsBySendJob, setAttemptsBySendJob] = useState<Record<string, SendAttempt[]>>({})
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState("")
@@ -55,6 +56,13 @@ export default function PendingPage() {
       }
       setReplyJobs(replies.data)
       setSendJobs(uncertainSends.data)
+      const attemptPairs = await Promise.all(
+        uncertainSends.data.map(async (job) => {
+          const attempts = await apiClient.listSendAttempts(job.send_job_id, 10)
+          return [job.send_job_id, attempts.success && attempts.data ? attempts.data : []] as const
+        }),
+      )
+      setAttemptsBySendJob(Object.fromEntries(attemptPairs))
     } catch (err) {
       setError(err instanceof Error ? err.message : "无法连接本地后端服务")
     } finally {
@@ -204,6 +212,7 @@ export default function PendingPage() {
                 <SendJobCard
                   key={job.send_job_id}
                   job={job}
+                  attempts={attemptsBySendJob[job.send_job_id] ?? []}
                   busyTarget={busyTarget}
                   onControl={updateControl}
                   onResolve={resolveSendJob}
@@ -287,11 +296,13 @@ function ReplyReviewAudit({ job }: { job: ReplyJob }) {
 
 function SendJobCard({
   job,
+  attempts,
   busyTarget,
   onControl,
   onResolve,
 }: {
   job: SendJob
+  attempts: SendAttempt[]
   busyTarget: string
   onControl: (target: ActionTarget) => void
   onResolve: (target: SendActionTarget) => void
@@ -315,6 +326,7 @@ function SendJobCard({
         </div>
       ) : null}
       <TextBlock label="发送内容" value={job.content} strong />
+      <SendAttemptList attempts={attempts} />
       <div className="mt-3 flex items-start gap-2 rounded-md bg-white px-3 py-2 text-xs text-amber-700">
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>该记录不会在此页面重发，请先人工核对微信窗口中的真实发送状态。</span>
@@ -322,6 +334,33 @@ function SendJobCard({
       <SendJobActions job={job} busyTarget={busyTarget} onResolve={onResolve} />
       <ControlActions conversationId={job.conversation_id} busyTarget={busyTarget} onControl={onControl} />
     </article>
+  )
+}
+
+function SendAttemptList({ attempts }: { attempts: SendAttempt[] }) {
+  if (!attempts.length) {
+    return null
+  }
+  return (
+    <div className="mt-3 rounded-md bg-white px-3 py-2">
+      <div className="mb-2 text-xs font-semibold text-slate-500">send_attempts</div>
+      <div className="space-y-2">
+        {attempts.map((attempt) => (
+          <div key={attempt.attempt_id} className="rounded border border-slate-100 bg-slate-50 px-2 py-2">
+            <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+              <span className="font-semibold text-slate-700">
+                #{attempt.attempt_no} {attempt.status}
+              </span>
+              <span className="text-slate-400">{formatDate(attempt.finished_at ?? attempt.started_at)}</span>
+            </div>
+            {attempt.error_code ? <MetaRow label="error_code" value={attempt.error_code} /> : null}
+            {attempt.error_message ? <MetaRow label="error_message" value={attempt.error_message} /> : null}
+            {attempt.before_screenshot ? <MetaRow label="before_screenshot" value={attempt.before_screenshot} /> : null}
+            {attempt.after_screenshot ? <MetaRow label="after_screenshot" value={attempt.after_screenshot} /> : null}
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
