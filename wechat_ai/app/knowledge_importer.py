@@ -32,6 +32,7 @@ class KnowledgeImporter:
         index_path: Path | None = None,
         chunk_size: int = 1000,
         overlap: int = 200,
+        chunk_strategy: str = "semantic_overlap",
         document_registry: DocumentExtractorRegistry | None = None,
         embedding_settings: EmbeddingSettings | None = None,
     ) -> None:
@@ -40,6 +41,7 @@ class KnowledgeImporter:
         self.index_path = Path(index_path or (self.knowledge_dir / "local_knowledge_index.json"))
         self.chunk_size = chunk_size
         self.overlap = overlap
+        self.chunk_strategy = chunk_strategy
         self.document_registry = document_registry or DocumentExtractorRegistry()
         self.embedding_settings = embedding_settings
 
@@ -116,6 +118,7 @@ class KnowledgeImporter:
             index_path=self.index_path,
             chunk_size=self.chunk_size,
             overlap=self.overlap,
+            chunk_strategy=self.chunk_strategy,
             source_paths=source_paths,
             embeddings=build_embeddings(self.embedding_settings or EmbeddingSettings.from_env()),
         )

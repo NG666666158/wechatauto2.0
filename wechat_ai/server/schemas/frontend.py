@@ -30,6 +30,39 @@ class KnowledgeTrustedRebuildRequest(StrictRequestModel):
     acceptance_query: str = Field("", max_length=500)
 
 
+class KnowledgeNormalizePreviewRequest(StrictRequestModel):
+    text: str = Field(..., min_length=1, max_length=20000)
+    title: str = Field("", max_length=200)
+    source: str = Field("", max_length=500)
+
+
+class KnowledgeNormalizeFaqItemRequest(StrictRequestModel):
+    question: str = Field("", max_length=1000)
+    answer: str = Field("", max_length=4000)
+    confidence: str = Field("", max_length=32)
+
+
+class KnowledgeNormalizePreviewPayloadRequest(StrictRequestModel):
+    faq_items: list[KnowledgeNormalizeFaqItemRequest] = Field(default_factory=list, max_length=100)
+    allowed_claims: list[str] = Field(default_factory=list, max_length=200)
+    forbidden_claims: list[str] = Field(default_factory=list, max_length=200)
+    handoff_rules: list[str] = Field(default_factory=list, max_length=200)
+    source_excerpt: str = Field("", max_length=8000)
+    warnings: list[str] = Field(default_factory=list, max_length=100)
+
+
+class KnowledgeNormalizeConfirmRequest(StrictRequestModel):
+    title: str = Field("", max_length=200)
+    source: str = Field("", max_length=500)
+    preview: KnowledgeNormalizePreviewPayloadRequest
+
+
+class KnowledgeAcceptanceReportRequest(StrictRequestModel):
+    questions: list[str] = Field(..., min_length=1, max_length=50)
+    limit: int = Field(3, ge=1, le=20)
+    min_top_score: float = Field(0.7, ge=0, le=1)
+
+
 class ReplySuggestionRequest(StrictRequestModel):
     message_text: str = Field("", max_length=8000)
 
@@ -80,6 +113,15 @@ class SafetyPolicyImportRequest(StrictRequestModel):
     safety_policy: SafetyPolicyPatchRequest
 
 
+class EmbeddingConfigPatchRequest(StrictRequestModel):
+    provider: str | None = Field(None, max_length=64)
+    base_url: str | None = Field(None, max_length=500)
+    model: str | None = Field(None, max_length=200)
+    dimensions: int | None = Field(None, ge=1, le=100000)
+    timeout: float | None = Field(None, ge=1, le=300)
+    api_key: str | None = Field(None, max_length=1000)
+
+
 class SettingsPatchRequest(StrictRequestModel):
     auto_reply_enabled: bool | None = None
     reply_style: str | None = Field(None, max_length=64)
@@ -101,6 +143,7 @@ class SettingsPatchRequest(StrictRequestModel):
     request_timeout_seconds: float | None = Field(None, ge=1, le=300)
     retry_attempts: int | None = Field(None, ge=0, le=10)
     real_send_enabled: bool | None = None
+    embedding_config: EmbeddingConfigPatchRequest | None = None
     safety_policy: SafetyPolicyPatchRequest | None = None
 
 
@@ -121,6 +164,24 @@ class SelfIdentityPatchRequest(StrictRequestModel):
         if value is None:
             return None
         return _clean_nonblank_strings(value, field_name="identity_facts")
+
+
+class SelfIdentityGenerateRequest(StrictRequestModel):
+    display_name: str = Field(..., min_length=1, max_length=64)
+
+
+class CustomerPatchRequest(StrictRequestModel):
+    display_name: str | None = Field(None, min_length=1, max_length=64)
+    status: str | None = Field(None, min_length=1, max_length=64)
+    tags: list[str] | None = Field(None, max_length=20)
+    remark: str | None = Field(None, max_length=1000)
+
+    @field_validator("tags", mode="after")
+    @classmethod
+    def reject_blank_tags(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        return _clean_nonblank_strings(value, field_name="tags")
 
 
 def _clean_nonblank_strings(value: list[str], *, field_name: str) -> list[str]:

@@ -83,6 +83,59 @@ class ChunkerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Chunker(chunk_size=5, overlap=5)
 
+    def test_recursive_chunking_prefers_paragraph_boundaries_before_character_windows(self) -> None:
+        chunker = Chunker(chunk_size=24, overlap=4)
+
+        chunks = chunker.chunk_document(
+            {
+                "doc_id": "doc-3",
+                "title": "客服规则",
+                "source": "knowledge/service.md",
+                "text": "售前说明：支持先咨询再下单。\n\n售后说明：退款需要订单号。\n\n隐私说明：不要索要验证码。",
+            }
+        )
+
+        chunk_texts = [chunk["text"] for chunk in chunks]
+        self.assertTrue(any(text == "售前说明：支持先咨询再下单。" for text in chunk_texts))
+        self.assertTrue(any(text == "售后说明：退款需要订单号。" for text in chunk_texts))
+        self.assertTrue(any(text == "隐私说明：不要索要验证码。" for text in chunk_texts))
+
+    def test_recursive_chunking_keeps_chinese_sentence_punctuation(self) -> None:
+        chunker = Chunker(chunk_size=12, overlap=2)
+
+        chunks = chunker.chunk_document(
+            {
+                "doc_id": "doc-4",
+                "title": "售后",
+                "source": "knowledge/after-sale.md",
+                "text": "第一条规则。第二条规则。第三条规则。",
+            }
+        )
+
+        chunk_text = "\n".join(chunk["text"] for chunk in chunks)
+        self.assertIn("第一条规则。", chunk_text)
+        self.assertIn("第二条规则。", chunk_text)
+        self.assertIn("第三条规则。", chunk_text)
+
+
+    def test_semantic_overlap_chunks_by_sentence_and_adds_fixed_overlap(self) -> None:
+        chunker = Chunker(chunk_size=16, overlap=5, strategy="semantic_overlap")
+
+        chunks = chunker.chunk_document(
+            {
+                "doc_id": "doc-5",
+                "title": "客服规则",
+                "source": "knowledge/service.md",
+                "text": "第一条规则。第二条规则。第三条规则。第四条规则。",
+            }
+        )
+
+        self.assertEqual([chunk["text"] for chunk in chunks], ["第一条规则。第二条规则。", "二条规则。第三条规则。第四条规则。"])
+
+    def test_unknown_chunk_strategy_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            Chunker(strategy="unknown")
+
 
 class EmbeddingsTests(unittest.TestCase):
     def test_base_embeddings_requires_implementation(self) -> None:

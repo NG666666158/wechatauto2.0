@@ -5,7 +5,7 @@ import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 from uuid import uuid4
 
 from wechat_ai.logging_utils import utc_timestamp
@@ -86,6 +86,7 @@ class RuntimeStateStore:
         risk_level: str = "LOW",
         need_human_review: bool = False,
         reason_codes: Iterable[str] | None = None,
+        metadata: Mapping[str, Any] | None = None,
         context_snapshot_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
@@ -103,8 +104,8 @@ class RuntimeStateStore:
                 INSERT INTO reply_jobs (
                     reply_job_id, conversation_id, trigger_event_ids, input_text,
                     context_snapshot_id, status, draft_reply, risk_level,
-                    need_human_review, reason_codes, idempotency_key, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    need_human_review, reason_codes, metadata, idempotency_key, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     reply_job_id,
@@ -117,6 +118,7 @@ class RuntimeStateStore:
                     str(risk_level).strip() or "LOW",
                     1 if need_human_review else 0,
                     _json_dumps(safe_reason_codes),
+                    _json_dumps(dict(metadata or {})),
                     safe_key,
                     now,
                     now,
@@ -602,6 +604,7 @@ class RuntimeStateStore:
                     risk_level TEXT NOT NULL DEFAULT 'LOW',
                     need_human_review INTEGER NOT NULL DEFAULT 0,
                     reason_codes TEXT NOT NULL DEFAULT '[]',
+                    metadata TEXT NOT NULL DEFAULT '{}',
                     idempotency_key TEXT NOT NULL,
                     review_reason TEXT,
                     reviewed_by TEXT,
@@ -654,6 +657,7 @@ class RuntimeStateStore:
                     "reviewed_by": "TEXT",
                     "reviewed_at": "TEXT",
                     "reason_codes": "TEXT NOT NULL DEFAULT '[]'",
+                    "metadata": "TEXT NOT NULL DEFAULT '{}'",
                 },
             )
 
@@ -682,7 +686,7 @@ class RuntimeStateStore:
         if row is None:
             return {}
         payload = dict(row)
-        for key in ("trigger_event_ids", "ocr_raw", "confirmation_result", "reason_codes"):
+        for key in ("trigger_event_ids", "ocr_raw", "confirmation_result", "reason_codes", "metadata"):
             if key in payload and isinstance(payload[key], str) and payload[key]:
                 try:
                     payload[key] = json.loads(payload[key])

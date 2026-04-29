@@ -38,6 +38,15 @@ class FakeDesktopService:
             "paused_sessions": [],
             "whitelist": [],
             "blacklist": [],
+            "embedding_config": {
+                "provider": "fake",
+                "base_url": "https://api.openai.com/v1",
+                "model": "text-embedding-3-small",
+                "dimensions": None,
+                "timeout": 30.0,
+                "api_key_set": False,
+                "api_key_preview": "",
+            },
             "safety_policy": {
                 "input_rules": [
                     {
@@ -283,6 +292,17 @@ class FakeDesktopService:
             "top_conversations": [{"conversation_id": "friend:alice", "target_title": "alice", "count": 1}],
         }
 
+    def get_dashboard_activity_metrics(self) -> dict[str, object]:
+        return {
+            "today_received_messages": 3,
+            "today_replied_messages": 2,
+            "today_replied_conversations": 1,
+            "pending_total": 4,
+            "pending_reply_jobs": 1,
+            "pending_identity_items": 2,
+            "pending_send_uncertain": 1,
+        }
+
     def list_send_attempts(self, send_job_id: str, *, limit: int = 100) -> list[dict[str, object]]:
         del limit
         return [
@@ -479,6 +499,9 @@ class FakeDesktopService:
     def get_customer(self, customer_id: str) -> dict[str, object]:
         return {"customer_id": customer_id, "display_name": "张先生", "status": "confirmed"}
 
+    def update_customer(self, customer_id: str, patch: dict[str, object]) -> dict[str, object]:
+        return {"customer_id": customer_id, "display_name": patch.get("display_name", "张先生"), "status": patch.get("status", "confirmed"), "tags": patch.get("tags", []), "remark": patch.get("remark", "")}
+
     def list_identity_drafts(self) -> list[dict[str, object]]:
         return [{"draft_user_id": "draft_001"}]
 
@@ -490,6 +513,9 @@ class FakeDesktopService:
 
     def update_global_self_identity(self, patch: dict[str, object]) -> dict[str, object]:
         return {"display_name": patch.get("display_name", "碱水"), "identity_facts": patch.get("identity_facts", [])}
+
+    def generate_global_self_identity(self, display_name: str) -> dict[str, object]:
+        return {"display_name": display_name, "identity_facts": [f"我是{display_name}。", "必须先核实重要承诺。"]}
 
     def build_prompt_acceptance_preview(
         self,
@@ -586,6 +612,81 @@ class FakeDesktopService:
 
     def build_web_knowledge_from_documents(self, file_paths: list[str], *, search_limit: int = 5) -> dict[str, object]:
         return {"documents": list(file_paths), "search_limit": search_limit, "status": "built"}
+
+    def list_knowledge_tasks(self, *, limit: int = 20) -> list[dict[str, object]]:
+        return [
+            {
+                "id": "task_001",
+                "type": "import",
+                "title": "本地文件入库",
+                "status": "completed",
+                "created_at": "2026-04-29T10:00:00Z",
+                "updated_at": "2026-04-29T10:01:00Z",
+                "summary": "已入库 1 个文件",
+                "error": "",
+                "metadata": {"file_count": 1},
+            }
+        ][:limit]
+
+    def build_ai_knowledge_normalize_preview(
+        self,
+        *,
+        text: str,
+        title: str = "",
+        source: str = "",
+    ) -> dict[str, object]:
+        return {
+            "faq_items": [{"question": "如何试用？", "answer": f"依据{title or source or text[:4]}说明回复。", "confidence": "high"}],
+            "allowed_claims": ["只能基于资料确认事实"],
+            "forbidden_claims": ["不能承诺资料外结果"],
+            "handoff_rules": ["资料不足时转人工"],
+            "source_excerpt": text[:40],
+            "warnings": [],
+        }
+
+    def confirm_ai_knowledge_normalize_preview(
+        self,
+        *,
+        preview: dict[str, object],
+        title: str = "",
+        source: str = "",
+    ) -> dict[str, object]:
+        return {
+            "file_path": "memory://ai-normalized.md",
+            "file_name": "ai-normalized.md",
+            "metadata": {"title": title, "source": source, "normalized": True},
+            "import_result": {"files": [{"file_name": "ai-normalized.md", "status": "imported"}], "index_rebuilt": True},
+        }
+
+    def build_knowledge_acceptance_report(
+        self,
+        questions: list[str],
+        *,
+        limit: int = 3,
+        min_top_score: float = 0.7,
+    ) -> dict[str, object]:
+        return {
+            "total_questions": len(questions),
+            "answered_questions": len(questions),
+            "missing_questions": 0,
+            "average_top_score": 0.9,
+            "trusted_result_count": len(questions),
+            "needs_review": False,
+            "items": [
+                {
+                    "query": question,
+                    "top_chunk_id": "chunk_001",
+                    "top_score": 0.9,
+                    "source": "faq.md",
+                    "retrieval_sources": ["dense"],
+                    "match_terms": ["trial"],
+                    "trust_status": "trusted",
+                    "verdict": "hit",
+                }
+                for question in questions[:limit]
+            ],
+            "markdown": "# Knowledge Retrieval Acceptance Report",
+        }
 
     def get_recent_logs(self, *, limit: int = 20) -> list[dict[str, object]]:
         self.recent_logs_calls += 1
@@ -1021,6 +1122,79 @@ def test_knowledge_trusted_rebuild_endpoint_is_available() -> None:
     assert payload["data"]["acceptance_snapshot"]["search_query"] == "trial policy"
 
 
+def test_knowledge_tasks_endpoint_is_available() -> None:
+    from wechat_ai.server import create_app
+
+    client = TestClient(create_app(desktop_service=FakeDesktopService()))
+    response = client.get("/api/v1/knowledge/tasks", params={"limit": 5})
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["success"] is True
+    assert payload["data"][0]["id"] == "task_001"
+    assert payload["data"][0]["type"] == "import"
+    assert payload["data"][0]["status"] == "completed"
+
+
+def test_knowledge_ai_normalize_preview_endpoint_is_available() -> None:
+    from wechat_ai.server import create_app
+
+    client = TestClient(create_app(desktop_service=FakeDesktopService()))
+    response = client.post(
+        "/api/v1/knowledge/ai-normalize-preview",
+        json={"text": "试用政策：支持 7 天体验，退款争议转人工。", "title": "试用政策", "source": "policy.md"},
+    )
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["success"] is True
+    assert payload["data"]["faq_items"][0]["question"] == "如何试用？"
+    assert payload["data"]["forbidden_claims"] == ["不能承诺资料外结果"]
+
+
+def test_knowledge_ai_normalize_confirm_endpoint_is_available() -> None:
+    from wechat_ai.server import create_app
+
+    client = TestClient(create_app(desktop_service=FakeDesktopService()))
+    response = client.post(
+        "/api/v1/knowledge/ai-normalize-confirm",
+        json={
+            "title": "试用政策",
+            "source": "policy.md",
+            "preview": {
+                "faq_items": [{"question": "如何试用？", "answer": "登记后体验。", "confidence": "high"}],
+                "allowed_claims": ["支持登记体验"],
+                "forbidden_claims": ["不能承诺退款"],
+                "handoff_rules": ["退款争议转人工"],
+                "source_excerpt": "试用政策",
+                "warnings": [],
+            },
+        },
+    )
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["success"] is True
+    assert payload["data"]["file_name"] == "ai-normalized.md"
+    assert payload["data"]["import_result"]["index_rebuilt"] is True
+
+
+def test_knowledge_acceptance_report_endpoint_is_available() -> None:
+    from wechat_ai.server import create_app
+
+    client = TestClient(create_app(desktop_service=FakeDesktopService()))
+    response = client.post(
+        "/api/v1/knowledge/acceptance-report",
+        json={"questions": ["试用政策是什么？"], "limit": 3, "min_top_score": 0.7},
+    )
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["success"] is True
+    assert payload["data"]["total_questions"] == 1
+    assert payload["data"]["items"][0]["verdict"] == "hit"
+
+
 def test_background_event_relay_primes_bus_without_per_client_sync_calls() -> None:
     from wechat_ai.server import create_app
 
@@ -1372,6 +1546,15 @@ def test_frontend_dashboard_and_settings_endpoints_are_available() -> None:
     assert dashboard["success"] is True
     assert dashboard["data"]["app"]["daemon_state"] == "stopped"
     assert dashboard["data"]["runtime"]["state"] == "stopped"
+    assert dashboard["data"]["activity"] == {
+        "today_received_messages": 3,
+        "today_replied_messages": 2,
+        "today_replied_conversations": 1,
+        "pending_total": 4,
+        "pending_reply_jobs": 1,
+        "pending_identity_items": 2,
+        "pending_send_uncertain": 1,
+    }
     assert settings["data"]["auto_reply_enabled"] is True
     assert updated["data"]["auto_reply_enabled"] is False
 
@@ -1472,6 +1655,7 @@ def test_frontend_customer_identity_and_knowledge_endpoints_are_available() -> N
     customers = client.get("/api/v1/customers").json()
     customer = client.get("/api/v1/customers/user_001").json()
     identity = client.get("/api/v1/identity/self/global").json()
+    identity_generated = client.post("/api/v1/identity/self/global/generate", json={"display_name": "聊天客服"}).json()
     identity_updated = client.patch("/api/v1/identity/self/global", json={"display_name": "新版身份"}).json()
     knowledge = client.get("/api/v1/knowledge/status").json()
     search = client.get("/api/v1/knowledge/search?q=试用&limit=1").json()
@@ -1481,6 +1665,8 @@ def test_frontend_customer_identity_and_knowledge_endpoints_are_available() -> N
     assert customers["data"][0]["display_name"] == "张先生"
     assert customer["data"]["customer_id"] == "user_001"
     assert identity["data"]["display_name"] == "碱水"
+    assert identity_generated["data"]["display_name"] == "聊天客服"
+    assert "必须先核实重要承诺。" in identity_generated["data"]["identity_facts"]
     assert identity_updated["data"]["display_name"] == "新版身份"
     assert knowledge["data"]["ready"] is False
     assert search["data"][0]["chunk_id"] == "chunk_001"
@@ -1713,6 +1899,13 @@ def main() -> None:
     test_shell_schedule_endpoints_are_available()
     test_debug_prompt_preview_endpoint_is_available()
     test_debug_knowledge_acceptance_endpoint_is_available()
+    test_debug_knowledge_acceptance_history_endpoint_is_available()
+    test_knowledge_trust_diagnostics_endpoint_is_available()
+    test_knowledge_trusted_rebuild_endpoint_is_available()
+    test_knowledge_tasks_endpoint_is_available()
+    test_knowledge_ai_normalize_preview_endpoint_is_available()
+    test_knowledge_ai_normalize_confirm_endpoint_is_available()
+    test_knowledge_acceptance_report_endpoint_is_available()
     test_background_event_relay_primes_bus_without_per_client_sync_calls()
     test_runtime_event_relay_bridges_runtime_logs_and_environment_changes()
     test_frontend_actions_publish_message_control_and_knowledge_events()

@@ -213,6 +213,44 @@
         "title": "ApiResponse[ErrorCatalogData]",
         "type": "object"
       },
+      "ApiResponse_KnowledgeAcceptanceReportData_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeAcceptanceReportData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiErrorPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "default": "",
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ApiResponse[KnowledgeAcceptanceReportData]",
+        "type": "object"
+      },
       "ApiResponse_KnowledgeAcceptanceSnapshotData_": {
         "properties": {
           "data": {
@@ -287,6 +325,82 @@
           "success"
         ],
         "title": "ApiResponse[KnowledgeImportResultData]",
+        "type": "object"
+      },
+      "ApiResponse_KnowledgeNormalizeConfirmResultData_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeNormalizeConfirmResultData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiErrorPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "default": "",
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ApiResponse[KnowledgeNormalizeConfirmResultData]",
+        "type": "object"
+      },
+      "ApiResponse_KnowledgeNormalizePreviewData_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeNormalizePreviewData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiErrorPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "default": "",
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ApiResponse[KnowledgeNormalizePreviewData]",
         "type": "object"
       },
       "ApiResponse_KnowledgeStatusData_": {
@@ -1227,6 +1341,48 @@
         "title": "ApiResponse[list[KnowledgeSearchResultData]]",
         "type": "object"
       },
+      "ApiResponse_list_KnowledgeTaskData__": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/KnowledgeTaskData"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiErrorPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "trace_id": {
+            "default": "",
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ApiResponse[list[KnowledgeTaskData]]",
+        "type": "object"
+      },
       "ApiResponse_list_SafetyPolicyAuditRecordData__": {
         "properties": {
           "data": {
@@ -1362,6 +1518,23 @@
           }
         },
         "title": "AppStatusData",
+        "type": "object"
+      },
+      "Body_upload_knowledge_api_v1_knowledge_upload_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "Body_upload_knowledge_api_v1_knowledge_upload_post",
         "type": "object"
       },
       "BusinessReasonCodeData": {
@@ -1635,6 +1808,66 @@
         "title": "CustomerData",
         "type": "object"
       },
+      "CustomerPatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "remark": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remark"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          }
+        },
+        "title": "CustomerPatchRequest",
+        "type": "object"
+      },
       "DaemonStatusData": {
         "properties": {
           "consecutive_errors": {
@@ -1737,6 +1970,47 @@
         "title": "DaemonStatusData",
         "type": "object"
       },
+      "DashboardActivityData": {
+        "properties": {
+          "pending_identity_items": {
+            "default": 0,
+            "title": "Pending Identity Items",
+            "type": "integer"
+          },
+          "pending_reply_jobs": {
+            "default": 0,
+            "title": "Pending Reply Jobs",
+            "type": "integer"
+          },
+          "pending_send_uncertain": {
+            "default": 0,
+            "title": "Pending Send Uncertain",
+            "type": "integer"
+          },
+          "pending_total": {
+            "default": 0,
+            "title": "Pending Total",
+            "type": "integer"
+          },
+          "today_received_messages": {
+            "default": 0,
+            "title": "Today Received Messages",
+            "type": "integer"
+          },
+          "today_replied_conversations": {
+            "default": 0,
+            "title": "Today Replied Conversations",
+            "type": "integer"
+          },
+          "today_replied_messages": {
+            "default": 0,
+            "title": "Today Replied Messages",
+            "type": "integer"
+          }
+        },
+        "title": "DashboardActivityData",
+        "type": "object"
+      },
       "DashboardPendingData": {
         "properties": {
           "identity_candidates": {
@@ -1755,6 +2029,9 @@
       },
       "DashboardSummaryData": {
         "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/DashboardActivityData"
+          },
           "app": {
             "anyOf": [
               {
@@ -1790,6 +2067,134 @@
           }
         },
         "title": "DashboardSummaryData",
+        "type": "object"
+      },
+      "EmbeddingConfigData": {
+        "properties": {
+          "api_key_preview": {
+            "default": "",
+            "title": "Api Key Preview",
+            "type": "string"
+          },
+          "api_key_set": {
+            "default": false,
+            "title": "Api Key Set",
+            "type": "boolean"
+          },
+          "base_url": {
+            "default": "https://api.openai.com/v1",
+            "title": "Base Url",
+            "type": "string"
+          },
+          "dimensions": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimensions"
+          },
+          "model": {
+            "default": "text-embedding-3-small",
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "default": "fake",
+            "title": "Provider",
+            "type": "string"
+          },
+          "timeout": {
+            "default": 30.0,
+            "title": "Timeout",
+            "type": "number"
+          }
+        },
+        "title": "EmbeddingConfigData",
+        "type": "object"
+      },
+      "EmbeddingConfigPatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "dimensions": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimensions"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "maximum": 300.0,
+                "minimum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeout"
+          }
+        },
+        "title": "EmbeddingConfigPatchRequest",
         "type": "object"
       },
       "ErrorCatalogData": {
@@ -1941,6 +2346,149 @@
         "title": "KnowledgeAcceptanceHistoryRecordData",
         "type": "object"
       },
+      "KnowledgeAcceptanceReportData": {
+        "properties": {
+          "answered_questions": {
+            "default": 0,
+            "title": "Answered Questions",
+            "type": "integer"
+          },
+          "average_top_score": {
+            "default": 0.0,
+            "title": "Average Top Score",
+            "type": "number"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeAcceptanceReportItemData"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "markdown": {
+            "default": "",
+            "title": "Markdown",
+            "type": "string"
+          },
+          "missing_questions": {
+            "default": 0,
+            "title": "Missing Questions",
+            "type": "integer"
+          },
+          "needs_review": {
+            "default": false,
+            "title": "Needs Review",
+            "type": "boolean"
+          },
+          "total_questions": {
+            "default": 0,
+            "title": "Total Questions",
+            "type": "integer"
+          },
+          "trusted_result_count": {
+            "default": 0,
+            "title": "Trusted Result Count",
+            "type": "integer"
+          }
+        },
+        "title": "KnowledgeAcceptanceReportData",
+        "type": "object"
+      },
+      "KnowledgeAcceptanceReportItemData": {
+        "properties": {
+          "match_terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Match Terms",
+            "type": "array"
+          },
+          "query": {
+            "default": "",
+            "title": "Query",
+            "type": "string"
+          },
+          "retrieval_sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Retrieval Sources",
+            "type": "array"
+          },
+          "source": {
+            "default": "",
+            "title": "Source",
+            "type": "string"
+          },
+          "top_chunk_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Chunk Id"
+          },
+          "top_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Score"
+          },
+          "trust_status": {
+            "default": "",
+            "title": "Trust Status",
+            "type": "string"
+          },
+          "verdict": {
+            "default": "",
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "title": "KnowledgeAcceptanceReportItemData",
+        "type": "object"
+      },
+      "KnowledgeAcceptanceReportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "default": 3,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "min_top_score": {
+            "default": 0.7,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Min Top Score",
+            "type": "number"
+          },
+          "questions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Questions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "questions"
+        ],
+        "title": "KnowledgeAcceptanceReportRequest",
+        "type": "object"
+      },
       "KnowledgeAcceptanceSnapshotData": {
         "properties": {
           "imported_files": {
@@ -2032,6 +2580,237 @@
           }
         },
         "title": "KnowledgeImportResultData",
+        "type": "object"
+      },
+      "KnowledgeNormalizeConfirmRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "preview": {
+            "$ref": "#/components/schemas/KnowledgeNormalizePreviewPayloadRequest"
+          },
+          "source": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Source",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "preview"
+        ],
+        "title": "KnowledgeNormalizeConfirmRequest",
+        "type": "object"
+      },
+      "KnowledgeNormalizeConfirmResultData": {
+        "properties": {
+          "file_name": {
+            "default": "",
+            "title": "File Name",
+            "type": "string"
+          },
+          "file_path": {
+            "default": "",
+            "title": "File Path",
+            "type": "string"
+          },
+          "import_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeImportResultData"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            ],
+            "title": "Import Result"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "title": "KnowledgeNormalizeConfirmResultData",
+        "type": "object"
+      },
+      "KnowledgeNormalizeFaqItemData": {
+        "properties": {
+          "answer": {
+            "default": "",
+            "title": "Answer",
+            "type": "string"
+          },
+          "confidence": {
+            "default": "",
+            "title": "Confidence",
+            "type": "string"
+          },
+          "question": {
+            "default": "",
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "title": "KnowledgeNormalizeFaqItemData",
+        "type": "object"
+      },
+      "KnowledgeNormalizeFaqItemRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Answer",
+            "type": "string"
+          },
+          "confidence": {
+            "default": "",
+            "maxLength": 32,
+            "title": "Confidence",
+            "type": "string"
+          },
+          "question": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "title": "KnowledgeNormalizeFaqItemRequest",
+        "type": "object"
+      },
+      "KnowledgeNormalizePreviewData": {
+        "properties": {
+          "allowed_claims": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Claims",
+            "type": "array"
+          },
+          "faq_items": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeNormalizeFaqItemData"
+            },
+            "title": "Faq Items",
+            "type": "array"
+          },
+          "forbidden_claims": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Forbidden Claims",
+            "type": "array"
+          },
+          "handoff_rules": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Handoff Rules",
+            "type": "array"
+          },
+          "source_excerpt": {
+            "default": "",
+            "title": "Source Excerpt",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "title": "KnowledgeNormalizePreviewData",
+        "type": "object"
+      },
+      "KnowledgeNormalizePreviewPayloadRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_claims": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Allowed Claims",
+            "type": "array"
+          },
+          "faq_items": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeNormalizeFaqItemRequest"
+            },
+            "maxItems": 100,
+            "title": "Faq Items",
+            "type": "array"
+          },
+          "forbidden_claims": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Forbidden Claims",
+            "type": "array"
+          },
+          "handoff_rules": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Handoff Rules",
+            "type": "array"
+          },
+          "source_excerpt": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "Source Excerpt",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "title": "KnowledgeNormalizePreviewPayloadRequest",
+        "type": "object"
+      },
+      "KnowledgeNormalizePreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Source",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "KnowledgeNormalizePreviewRequest",
         "type": "object"
       },
       "KnowledgeSearchResultData": {
@@ -2200,6 +2979,62 @@
           }
         },
         "title": "KnowledgeStatusData",
+        "type": "object"
+      },
+      "KnowledgeTaskData": {
+        "properties": {
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "default": "",
+            "title": "Error",
+            "type": "string"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "stage": {
+            "default": "queued",
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "default": "",
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "default": "",
+            "title": "Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "default": "",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "title": "KnowledgeTaskData",
         "type": "object"
       },
       "KnowledgeTrustDiagnosticsData": {
@@ -3274,6 +4109,22 @@
         "title": "SelfIdentityData",
         "type": "object"
       },
+      "SelfIdentityGenerateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "title": "SelfIdentityGenerateRequest",
+        "type": "object"
+      },
       "SelfIdentityPatchRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3480,6 +4331,9 @@
             "title": "Blacklist",
             "type": "array"
           },
+          "embedding_config": {
+            "$ref": "#/components/schemas/EmbeddingConfigData"
+          },
           "esc_action": {
             "default": "pause",
             "title": "Esc Action",
@@ -3609,6 +4463,16 @@
               }
             ],
             "title": "Blacklist"
+          },
+          "embedding_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EmbeddingConfigPatchRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "esc_action": {
             "anyOf": [
@@ -4357,6 +5221,56 @@
         "tags": [
           "customers"
         ]
+      },
+      "patch": {
+        "operationId": "update_customer_api_v1_customers__customer_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CustomerData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Customer",
+        "tags": [
+          "customers"
+        ]
       }
     },
     "/api/v1/dashboard/summary": {
@@ -4837,6 +5751,47 @@
           }
         },
         "summary": "Update Global Self Identity",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/identity/self/global/generate": {
+      "post": {
+        "operationId": "generate_global_self_identity_api_v1_identity_self_global_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelfIdentityGenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SelfIdentityData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Global Self Identity",
         "tags": [
           "identity"
         ]
@@ -5369,6 +6324,129 @@
         ]
       }
     },
+    "/api/v1/knowledge/acceptance-report": {
+      "post": {
+        "operationId": "acceptance_report_api_v1_knowledge_acceptance_report_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeAcceptanceReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeAcceptanceReportData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Acceptance Report",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/v1/knowledge/ai-normalize-confirm": {
+      "post": {
+        "operationId": "ai_normalize_confirm_api_v1_knowledge_ai_normalize_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeNormalizeConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeNormalizeConfirmResultData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ai Normalize Confirm",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/v1/knowledge/ai-normalize-preview": {
+      "post": {
+        "operationId": "ai_normalize_preview_api_v1_knowledge_ai_normalize_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeNormalizePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeNormalizePreviewData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ai Normalize Preview",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
     "/api/v1/knowledge/import": {
       "post": {
         "operationId": "import_knowledge_api_v1_knowledge_import_post",
@@ -5485,6 +6563,51 @@
         ]
       }
     },
+    "/api/v1/knowledge/tasks": {
+      "get": {
+        "operationId": "list_knowledge_tasks_api_v1_knowledge_tasks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_KnowledgeTaskData__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Knowledge Tasks",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
     "/api/v1/knowledge/trust-diagnostics": {
       "get": {
         "operationId": "knowledge_trust_diagnostics_api_v1_knowledge_trust_diagnostics_get",
@@ -5542,6 +6665,47 @@
           }
         },
         "summary": "Rebuild Knowledge With Trusted Embeddings",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/v1/knowledge/upload": {
+      "post": {
+        "operationId": "upload_knowledge_api_v1_knowledge_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_knowledge_api_v1_knowledge_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeImportResultData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Knowledge",
         "tags": [
           "knowledge"
         ]

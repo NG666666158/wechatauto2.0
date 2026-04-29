@@ -3,7 +3,7 @@
   "api_version": "0.1.0",
   "base_path": "/api/v1",
   "contract_version": "p4-baseline-v1",
-  "endpoint_count": 57,
+  "endpoint_count": 64,
   "endpoints": [
     {
       "id": "get_api_v1_controls_conversations_conversation_id",
@@ -119,6 +119,21 @@
       ],
       "response_schema": "ApiResponse_CustomerData_",
       "summary": "Get Customer",
+      "tags": [
+        "customers"
+      ]
+    },
+    {
+      "id": "patch_api_v1_customers_customer_id",
+      "method": "PATCH",
+      "path": "/api/v1/customers/{customer_id}",
+      "request_schema": "CustomerPatchRequest",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "ApiResponse_CustomerData_",
+      "summary": "Update Customer",
       "tags": [
         "customers"
       ]
@@ -297,6 +312,21 @@
       ]
     },
     {
+      "id": "post_api_v1_identity_self_global_generate",
+      "method": "POST",
+      "path": "/api/v1/identity/self/global/generate",
+      "request_schema": "SelfIdentityGenerateRequest",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "ApiResponse_SelfIdentityData_",
+      "summary": "Generate Global Self Identity",
+      "tags": [
+        "identity"
+      ]
+    },
+    {
       "id": "get_api_v1_jobs_reply",
       "method": "GET",
       "path": "/api/v1/jobs/reply",
@@ -416,6 +446,51 @@
       ]
     },
     {
+      "id": "post_api_v1_knowledge_acceptance_report",
+      "method": "POST",
+      "path": "/api/v1/knowledge/acceptance-report",
+      "request_schema": "KnowledgeAcceptanceReportRequest",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "ApiResponse_KnowledgeAcceptanceReportData_",
+      "summary": "Acceptance Report",
+      "tags": [
+        "knowledge"
+      ]
+    },
+    {
+      "id": "post_api_v1_knowledge_ai_normalize_confirm",
+      "method": "POST",
+      "path": "/api/v1/knowledge/ai-normalize-confirm",
+      "request_schema": "KnowledgeNormalizeConfirmRequest",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "ApiResponse_KnowledgeNormalizeConfirmResultData_",
+      "summary": "Ai Normalize Confirm",
+      "tags": [
+        "knowledge"
+      ]
+    },
+    {
+      "id": "post_api_v1_knowledge_ai_normalize_preview",
+      "method": "POST",
+      "path": "/api/v1/knowledge/ai-normalize-preview",
+      "request_schema": "KnowledgeNormalizePreviewRequest",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "ApiResponse_KnowledgeNormalizePreviewData_",
+      "summary": "Ai Normalize Preview",
+      "tags": [
+        "knowledge"
+      ]
+    },
+    {
       "id": "post_api_v1_knowledge_import",
       "method": "POST",
       "path": "/api/v1/knowledge/import",
@@ -460,6 +535,21 @@
       ]
     },
     {
+      "id": "get_api_v1_knowledge_tasks",
+      "method": "GET",
+      "path": "/api/v1/knowledge/tasks",
+      "request_schema": "",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "ApiResponse_list_KnowledgeTaskData__",
+      "summary": "List Knowledge Tasks",
+      "tags": [
+        "knowledge"
+      ]
+    },
+    {
       "id": "get_api_v1_knowledge_trust_diagnostics",
       "method": "GET",
       "path": "/api/v1/knowledge/trust-diagnostics",
@@ -484,6 +574,21 @@
       ],
       "response_schema": "ApiResponse_KnowledgeTrustedRebuildResultData_",
       "summary": "Rebuild Knowledge With Trusted Embeddings",
+      "tags": [
+        "knowledge"
+      ]
+    },
+    {
+      "id": "post_api_v1_knowledge_upload",
+      "method": "POST",
+      "path": "/api/v1/knowledge/upload",
+      "request_schema": "",
+      "response_codes": [
+        "200",
+        "422"
+      ],
+      "response_schema": "ApiResponse_KnowledgeImportResultData_",
+      "summary": "Upload Knowledge",
       "tags": [
         "knowledge"
       ]
@@ -840,8 +945,7 @@
     "customers": [
       "/api/v1/customers",
       "/api/v1/customers/{customer_id}",
-      "/api/v1/identity/drafts",
-      "/api/v1/identity/candidates"
+      "/api/v1/identity/self/global"
     ],
     "home": [
       "/api/v1/dashboard/summary",
@@ -854,24 +958,27 @@
       "/api/v1/knowledge/trust-diagnostics",
       "/api/v1/knowledge/trusted-rebuild",
       "/api/v1/knowledge/search",
+      "/api/v1/knowledge/tasks",
+      "/api/v1/knowledge/ai-normalize-preview",
+      "/api/v1/knowledge/ai-normalize-confirm",
+      "/api/v1/knowledge/acceptance-report",
       "/api/v1/knowledge/import",
+      "/api/v1/knowledge/upload",
       "/api/v1/knowledge/web-build"
     ],
     "messages": [
       "/api/v1/conversations",
-      "/api/v1/conversations/{conversation_id}",
-      "/api/v1/conversations/{conversation_id}/suggest",
-      "/api/v1/conversations/{conversation_id}/send"
+      "/api/v1/conversations/{conversation_id}"
     ],
     "settings": [
       "/api/v1/settings",
       "/api/v1/privacy/policy",
-      "/api/v1/environment/wechat",
-      "/api/v1/controls/conversations/{conversation_id}",
-      "/api/v1/errors/catalog"
+      "/api/v1/settings/safety-policy/export",
+      "/api/v1/settings/safety-policy/import",
+      "/api/v1/settings/safety-policy/restore-defaults"
     ]
   },
-  "schema_count": 100,
+  "schema_count": 121,
   "schemas": [
     "ApiErrorPayload",
     "ApiResponse_ConversationControlData_",
@@ -879,8 +986,11 @@
     "ApiResponse_CustomerData_",
     "ApiResponse_DashboardSummaryData_",
     "ApiResponse_ErrorCatalogData_",
+    "ApiResponse_KnowledgeAcceptanceReportData_",
     "ApiResponse_KnowledgeAcceptanceSnapshotData_",
     "ApiResponse_KnowledgeImportResultData_",
+    "ApiResponse_KnowledgeNormalizeConfirmResultData_",
+    "ApiResponse_KnowledgeNormalizePreviewData_",
     "ApiResponse_KnowledgeStatusData_",
     "ApiResponse_KnowledgeTrustDiagnosticsData_",
     "ApiResponse_KnowledgeTrustedRebuildResultData_",
@@ -905,9 +1015,11 @@
     "ApiResponse_list_IdentityDraftData__",
     "ApiResponse_list_KnowledgeAcceptanceHistoryRecordData__",
     "ApiResponse_list_KnowledgeSearchResultData__",
+    "ApiResponse_list_KnowledgeTaskData__",
     "ApiResponse_list_SafetyPolicyAuditRecordData__",
     "ApiResponse_list_dict_str__object___",
     "AppStatusData",
+    "Body_upload_knowledge_api_v1_knowledge_upload_post",
     "BusinessReasonCodeData",
     "BusinessStatusData",
     "ConversationControlData",
@@ -916,21 +1028,36 @@
     "ConversationListItemData",
     "ConversationMessageData",
     "CustomerData",
+    "CustomerPatchRequest",
     "DaemonStatusData",
+    "DashboardActivityData",
     "DashboardPendingData",
     "DashboardSummaryData",
+    "EmbeddingConfigData",
+    "EmbeddingConfigPatchRequest",
     "ErrorCatalogData",
     "HTTPValidationError",
     "HttpErrorCodeData",
     "IdentityCandidateData",
     "IdentityDraftData",
     "KnowledgeAcceptanceHistoryRecordData",
+    "KnowledgeAcceptanceReportData",
+    "KnowledgeAcceptanceReportItemData",
+    "KnowledgeAcceptanceReportRequest",
     "KnowledgeAcceptanceSnapshotData",
     "KnowledgeFileImportData",
     "KnowledgeImportRequest",
     "KnowledgeImportResultData",
+    "KnowledgeNormalizeConfirmRequest",
+    "KnowledgeNormalizeConfirmResultData",
+    "KnowledgeNormalizeFaqItemData",
+    "KnowledgeNormalizeFaqItemRequest",
+    "KnowledgeNormalizePreviewData",
+    "KnowledgeNormalizePreviewPayloadRequest",
+    "KnowledgeNormalizePreviewRequest",
     "KnowledgeSearchResultData",
     "KnowledgeStatusData",
+    "KnowledgeTaskData",
     "KnowledgeTrustDiagnosticsData",
     "KnowledgeTrustedRebuildRequest",
     "KnowledgeTrustedRebuildResultData",
@@ -958,6 +1085,7 @@
     "ScheduleBlockData",
     "ScheduleBlockPatchRequest",
     "SelfIdentityData",
+    "SelfIdentityGenerateRequest",
     "SelfIdentityPatchRequest",
     "SendReplyRequest",
     "SendReplyResultData",

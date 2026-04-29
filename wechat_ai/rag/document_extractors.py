@@ -95,8 +95,12 @@ def _import_optional(module_name: str, attr_name: str):
         runtime_site = Path.home() / ".cache" / "codex-runtimes" / "codex-primary-runtime" / "dependencies" / "python"
         if runtime_site.exists() and str(runtime_site) not in sys.path:
             sys.path.append(str(runtime_site))
-        module = __import__(module_name, fromlist=[attr_name])
-        return getattr(module, attr_name)
+        try:
+            module = __import__(module_name, fromlist=[attr_name])
+            return getattr(module, attr_name)
+        except ModuleNotFoundError as exc:
+            package_name = {"docx": "python-docx", "pypdf": "pypdf"}.get(module_name, module_name)
+            raise RuntimeError(f"缺少文档解析依赖：{package_name}，请先安装 requirements.txt 后重试") from exc
 
 
 def _build_windows_ocr_command(path: Path) -> list[str]:

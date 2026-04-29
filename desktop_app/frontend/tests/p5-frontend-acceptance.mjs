@@ -45,10 +45,7 @@ const checks = [
         "getDashboardSummary",
         "getSettings",
         "listConversations",
-        "sendConversationReply",
         "listReplyJobs",
-        "approveReplyJob",
-        "cancelReplyJob",
         "listSendJobs",
         "listSendAttempts",
         "resolveSendJob",
@@ -56,11 +53,16 @@ const checks = [
         "getSendUncertainMetrics",
         "SendUncertainMetrics",
         "listCustomers",
+        "updateCustomer",
         "updateGlobalSelfIdentity",
         "getKnowledgeStatus",
         "searchKnowledge",
         "importKnowledgeFiles",
         "buildWebKnowledgeFromDocuments",
+        "listKnowledgeTasks",
+        "buildKnowledgeNormalizePreview",
+        "confirmKnowledgeNormalizePreview",
+        "buildKnowledgeAcceptanceReport",
         "getKnowledgeAcceptanceHistory",
         "getKnowledgeTrustDiagnostics",
         "rebuildKnowledgeWithTrustedEmbeddings",
@@ -76,16 +78,30 @@ const checks = [
     },
   },
   {
-    name: "home page renders send uncertain risk overview",
+    name: "customers page edits customer identity fields inline",
+    run: () => {
+      const source = read("app/customers/page.tsx")
+      const apiSource = read("lib/api.ts")
+      return (
+        source.includes("saveCustomer") &&
+        source.includes("editingCustomer") &&
+        source.includes("客户名称") &&
+        source.includes("备注") &&
+        source.includes("交给模型作为用户身份依据") &&
+        !source.includes("CustomerIdentityCard") &&
+        apiSource.includes("updateCustomer")
+      )
+    },
+  },
+  {
+    name: "home page omits send uncertain risk overview",
     run: () => {
       const source = read("app/page.tsx")
       return (
-        source.includes("getSendUncertainMetrics") &&
-        source.includes("SendUncertainRiskOverview") &&
-        source.includes("top_error_codes") &&
-        source.includes("top_conversations") &&
-        source.includes("SEND_UNCERTAIN") &&
-        !source.includes("自动重发")
+        !source.includes("getSendUncertainMetrics") &&
+        !source.includes("SendUncertainRiskOverview") &&
+        !source.includes("listUncertainSendJobs(20)") &&
+        !source.includes("发送不确定风险概览")
       )
     },
   },
@@ -102,25 +118,25 @@ const checks = [
       ].every((file) => read(file).includes("ErrorState")),
   },
   {
-    name: "pending page shows reply review and uncertain send queues",
+    name: "pending page shows risk records and uncertain send queues",
     run: () => {
       const source = read("app/pending/page.tsx")
       return (
         source.includes("listReplyJobs") &&
         source.includes("listUncertainSendJobs") &&
         source.includes("listSendAttempts") &&
-        source.includes("approveReplyJob") &&
-        source.includes("cancelReplyJob") &&
-        source.includes("approve_send") &&
-        source.includes("send_after_approve") &&
+        source.includes("isReviewRiskReplyJob") &&
         source.includes("ReplyRiskSummary") &&
+        source.includes("ReplyCardHeader") &&
         source.includes("reason_codes") &&
-        source.includes("formatReasonCode") &&
+        source.includes("formatConversationLabel") &&
         source.includes("resolveSendJob") &&
         source.includes("unpauseConversation") &&
         source.includes("unpause_conversation") &&
-        source.includes("批准") &&
-        source.includes("取消") &&
+        !source.includes("approveReplyJob") &&
+        !source.includes("cancelReplyJob") &&
+        !source.includes("send_after_approve") &&
+        !source.includes("批准并发送") &&
         source.includes("确认已发") &&
         source.includes("确认并恢复") &&
         source.includes("标记失败") &&
@@ -208,40 +224,108 @@ const checks = [
     },
   },
   {
-    name: "pending page sends manual reviewer audit fields",
+    name: "pending page sends manual send resolution audit fields",
     run: () => {
       const source = read("app/pending/page.tsx")
       return (
-        source.includes("manual_approve") &&
-        source.includes("manual_approve_and_send") &&
-        source.includes('reason: "manual_cancel"') &&
-        countOccurrences(source, 'reviewed_by: "operator"') >= 3
+        source.includes("manual_confirmed") &&
+        source.includes("manual_failed") &&
+        countOccurrences(source, 'reviewed_by: "operator"') >= 1
       )
     },
   },
   {
-    name: "pending page renders reply review audit fields",
+    name: "pending page hides technical reply review audit block",
     run: () => {
       const source = read("app/pending/page.tsx")
-      return source.includes("reviewed_by") && source.includes("reviewed_at") && source.includes("review_reason")
+      return !source.includes("ReplyReviewAudit") && !source.includes("审核人")
     },
   },
   {
-    name: "home page loads uncertain send job overview",
+    name: "pending page localizes review risk reasons and send outcomes",
     run: () => {
-      const source = read("app/page.tsx")
-      return source.includes("listUncertainSendJobs(20)") && source.includes("uncertainSendJobs")
+      const source = read("app/pending/page.tsx")
+      return (
+        source.includes("RISK_LEVEL_CATALOG") &&
+        source.includes("REASON_CODE_CATALOG") &&
+        source.includes("SEND_STATUS_CATALOG") &&
+        source.includes("高风险") &&
+        source.includes("提示词注入风险") &&
+        source.includes("知识库证据未通过可信校验") &&
+        source.includes("发送后未确认") &&
+        source.includes("建议操作") &&
+        source.includes("保留原码") &&
+        source.includes("formatSendStatus") &&
+        source.includes("formatSendErrorCode")
+      )
     },
   },
   {
-    name: "dangerous message send requires confirmation",
-    run: () => read("app/messages/page.tsx").includes("window.confirm"),
+    name: "pending page omits duplicate send uncertain risk overview",
+    run: () => {
+      const source = read("app/pending/page.tsx")
+      return !source.includes("getSendUncertainMetrics") && !source.includes("SendUncertainRiskOverview")
+    },
+  },
+  {
+    name: "messages page is record-only without send actions",
+    run: () => {
+      const source = read("app/messages/page.tsx")
+      return (
+        source.includes("messagesScrollRef") &&
+        source.includes("scrollTop = scrollArea.scrollHeight") &&
+        source.includes("RecordSummaryPanel") &&
+        source.includes("overflow-y-auto") &&
+        !source.includes("CONVERSATION_PAGE_SIZE") &&
+        !source.includes("上一页") &&
+        !source.includes("下一页") &&
+        !source.includes("桌面端仅查看记录，不在此页发送消息") &&
+        !source.includes("slice(-8)") &&
+        !source.includes("sendConversationReply") &&
+        !source.includes("suggestReply") &&
+        !source.includes("window.confirm")
+      )
+    },
   },
   {
     name: "knowledge page supports local import and web build actions",
     run: () => {
       const source = read("app/knowledge/page.tsx")
-      return source.includes("importKnowledgeFiles") && source.includes("buildWebKnowledgeFromDocuments")
+      return (
+        source.includes("selectKnowledgeFiles") &&
+        source.includes("getPathForFile") &&
+        source.includes("apiClient.uploadKnowledgeFiles(files)") &&
+        source.includes("importKnowledgeFiles") &&
+        read("lib/api.ts").includes('"/knowledge/upload"') &&
+        source.includes("buildWebKnowledgeFromDocuments")
+      )
+    },
+  },
+  {
+    name: "desktop shell exposes knowledge file picker bridge",
+    run: () => {
+      const mainSource = read("../electron/main.cjs")
+      const preloadSource = read("../electron/preload.cjs")
+      const shellSource = read("lib/electron-shell.ts")
+      return (
+        mainSource.includes('dialog.showOpenDialog') &&
+        mainSource.includes('"knowledge:select-files"') &&
+        mainSource.includes("multiSelections") &&
+        mainSource.includes("txt") &&
+        mainSource.includes("markdown") &&
+        mainSource.includes("docx") &&
+        mainSource.includes("pdf") &&
+        preloadSource.includes('"electronShell"') &&
+        preloadSource.includes("selectKnowledgeFiles") &&
+        preloadSource.includes("getPathForFile") &&
+        preloadSource.includes("webUtils.getPathForFile") &&
+        preloadSource.includes('"knowledge:select-files"') &&
+        shellSource.includes("electronShell?: ElectronShellApi") &&
+        shellSource.includes("selectKnowledgeFiles") &&
+        shellSource.includes("getPathForFile") &&
+        shellSource.includes("Promise<string[]>") &&
+        shellSource.includes("return []")
+      )
     },
   },
   {
@@ -278,42 +362,55 @@ const checks = [
     },
   },
   {
-    name: "knowledge page renders acceptance history panel",
+    name: "knowledge page renders readable search result dialog",
     run: () => {
       const source = read("app/knowledge/page.tsx")
-      const apiSource = read("lib/api.ts")
       return (
-        source.includes("AcceptanceHistoryPanel") &&
-        source.includes("acceptanceHistory") &&
-        source.includes("getKnowledgeAcceptanceHistory") &&
-        source.includes("knowledge_trust_status") &&
-        source.includes("retrieved_chunk_ids") &&
-        source.includes("imported_files") &&
-        !source.includes("history.retrieved_chunks") &&
-        apiSource.includes('"/debug/knowledge-acceptance/history"')
+        source.includes("apiClient.searchKnowledge(keyword, 5)") &&
+        source.includes("SearchResultCard") &&
+        source.includes("formatSearchResultSource") &&
+        source.includes("内容片段") &&
+        source.includes("来源") &&
+        source.includes("相关度") &&
+        source.includes("暂无匹配片段") &&
+        source.includes("检索出错") &&
+        source.includes("overflow-y-auto")
       )
     },
   },
   {
-    name: "knowledge page renders trust diagnostics gate",
+    name: "knowledge page renders backend recent tasks",
     run: () => {
       const source = read("app/knowledge/page.tsx")
       const apiSource = read("lib/api.ts")
       return (
-        source.includes("KnowledgeTrustGate") &&
-        source.includes("trustDiagnostics") &&
-        source.includes("blocked_for_real_send") &&
-        source.includes("recommended_actions") &&
-        source.includes("trusted_rebuild_available") &&
-        source.includes("trusted_rebuild_provider") &&
-        source.includes("trusted_rebuild_block_reason") &&
-        source.includes("rebuild_with_trusted_embeddings") &&
-        source.includes("route_replies_to_manual_review") &&
-        source.includes("rebuildKnowledgeWithTrustedEmbeddings") &&
-        source.includes("trustedRebuildResult") &&
-        source.includes("acceptance_query") &&
+        source.includes("listKnowledgeTasks") &&
+        source.includes("buildKnowledgeAcceptanceReport") &&
+        source.includes("formatKnowledgeTaskType") &&
+        source.includes("formatKnowledgeTaskStatus") &&
+        source.includes("formatKnowledgeTaskStage") &&
+        source.includes("ai_normalize") &&
+        source.includes("AcceptanceReportDialog") &&
+        !source.includes("importResult") &&
+        !source.includes("webResult") &&
+        apiSource.includes('"/knowledge/tasks"') &&
+        apiSource.includes('"/knowledge/ai-normalize-preview"') &&
+        apiSource.includes('"/knowledge/ai-normalize-confirm"') &&
+        apiSource.includes('"/knowledge/acceptance-report"')
+      )
+    },
+  },
+  {
+    name: "knowledge API client keeps trust diagnostics available without a persistent page gate",
+    run: () => {
+      const source = read("app/knowledge/page.tsx")
+      const apiSource = read("lib/api.ts")
+      return (
+        !source.includes("KnowledgeTrustGate") &&
         apiSource.includes('"/knowledge/trust-diagnostics"') &&
-        apiSource.includes('"/knowledge/trusted-rebuild"')
+        apiSource.includes('"/knowledge/trusted-rebuild"') &&
+        apiSource.includes("KnowledgeTrustDiagnostics") &&
+        apiSource.includes("KnowledgeTrustedRebuildResult")
       )
     },
   },
@@ -357,31 +454,25 @@ const checks = [
         source.includes("prompt_injection") &&
         source.includes("sensitive_information") &&
         source.includes("business_risk") &&
-        source.includes("reset_to_defaults") &&
+        source.includes("restoreDefaultSafetyPolicy") &&
         apiSource.includes("SafetyPolicyPatch") &&
         apiSource.includes("rule_groups")
       )
     },
   },
   {
-    name: "settings page renders safety policy audit trail",
+    name: "settings page hides safety policy audit trail",
     run: () => {
       const source = read("app/settings/page.tsx")
-      const apiSource = read("lib/api.ts")
       return (
-        source.includes("getSafetyPolicyAudit") &&
-        source.includes("SafetyPolicyAuditTrail") &&
-        source.includes("changed_rule_groups") &&
-        source.includes("reset_to_defaults") &&
-        source.includes("operator") &&
-        source.includes("source") &&
-        apiSource.includes("SafetyPolicyAuditRecord") &&
-        apiSource.includes('"/settings/safety-policy/audit"')
+        !source.includes("getSafetyPolicyAudit") &&
+        !source.includes("SafetyPolicyAuditTrail") &&
+        !source.includes("changed_rule_groups")
       )
     },
   },
   {
-    name: "settings page supports safety policy import export recovery",
+    name: "settings page supports localized safety policy import export recovery",
     run: () => {
       const source = read("app/settings/page.tsx")
       const apiSource = read("lib/api.ts")
@@ -390,7 +481,10 @@ const checks = [
         source.includes("exportSafetyPolicy") &&
         source.includes("importSafetyPolicy") &&
         source.includes("restoreDefaultSafetyPolicy") &&
-        source.includes("Safety Policy Import / Export") &&
+        source.includes("安全策略备份") &&
+        source.includes("导出配置") &&
+        source.includes("导入配置") &&
+        source.includes("DialogContent") &&
         source.includes("JSON.parse") &&
         apiSource.includes("SafetyPolicyImportBody") &&
         apiSource.includes('"/settings/safety-policy/export"') &&
@@ -400,16 +494,13 @@ const checks = [
     },
   },
   {
-    name: "pending page renders approve send result feedback",
+    name: "pending page hides technical reply send result block",
     run: () => {
       const source = read("app/pending/page.tsx")
       return (
-        source.includes("ReplySendResult") &&
-        source.includes("approve_send_result") &&
-        source.includes("send_status") &&
-        source.includes("send_result") &&
-        source.includes("send_job_id") &&
-        source.includes("confirmed")
+        !source.includes("ReplySendResult") &&
+        !source.includes("reply_send_result") &&
+        !source.includes("发送任务 ID")
       )
     },
   },

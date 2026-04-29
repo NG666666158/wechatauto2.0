@@ -21,6 +21,47 @@ def _fresh_dir(prefix: str) -> Path:
 
 
 class KnowledgeImporterTests(TestCase):
+    def test_minimal_real_document_import_rebuild_and_service_search_flow(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        root = _fresh_dir(".tmp_knowledge_minimal_flow")
+        try:
+            refund_policy = root / "refund_policy.txt"
+            refund_policy.write_text(
+                "Refund policy: customers can request a refund within 7 days. "
+                "Use keyword alpha-refund-window for verification.",
+                encoding="utf-8",
+            )
+            setup_notes = root / "setup_notes.md"
+            setup_notes.write_text(
+                "# Setup notes\n\n"
+                "Windows setup requires enabling accessibility permissions before automation starts. "
+                "Use keyword beta-accessibility-setup for verification.",
+                encoding="utf-8",
+            )
+            shipping_note = root / "shipping_note.txt"
+            shipping_note.write_text(
+                "Shipping note: standard parcels leave the warehouse in 48 hours. "
+                "Use keyword gamma-shipping-window for verification.",
+                encoding="utf-8",
+            )
+            service = DesktopAppService(data_root=root / "data")
+
+            import_result = service.import_knowledge_files([refund_policy, setup_notes, shipping_note])
+            results = service.search_knowledge("alpha-refund-window", limit=3)
+
+            self.assertTrue(import_result["index_rebuilt"])
+            self.assertEqual([item["status"] for item in import_result["files"]], ["imported", "imported", "imported"])
+            self.assertGreaterEqual(import_result["index_status"]["documents_loaded"], 3)
+            self.assertGreaterEqual(len(results), 1)
+            self.assertIn("alpha-refund-window", results[0]["text"])
+            self.assertIn("Refund policy", results[0]["text"])
+            self.assertEqual(results[0]["doc_id"], "refund_policy")
+            self.assertIn("uploads/extracted/refund_policy.md", results[0]["source"])
+            self.assertIn("keyword", results[0]["retrieval_sources"])
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
     def test_import_txt_file_copies_and_rebuilds_index(self) -> None:
         from wechat_ai.app.knowledge_importer import KnowledgeImporter
 

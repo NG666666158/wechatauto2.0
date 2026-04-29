@@ -106,6 +106,7 @@ class PromptBuilder:
             "## Current Reply Task\n"
             f"Scene: {scene}\n"
             f"Latest message: {latest_message}\n"
+            "Follow the Self Identity Summary as who you are, and follow the User Profile Summary as who the other person is.\n"
             "Write a direct Chinese WeChat reply with no extra explanation."
         )
 

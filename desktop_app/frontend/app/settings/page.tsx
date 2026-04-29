@@ -4,41 +4,47 @@ import type { ReactNode } from "react"
 import { useEffect, useState, useTransition } from "react"
 import { AppShell } from "@/components/app-shell"
 import { ErrorState, LoadingState } from "@/components/api-state"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { toast } from "@/hooks/use-toast"
 import { apiClient } from "@/lib/api"
 import { getDesktopShellBridge, type DesktopShellPreferences } from "@/lib/electron-shell"
-import type { PrivacyPolicy, SafetyPolicyAuditRecord, SafetyPolicyPatch, Settings, SettingsPatch } from "@/lib/api"
+import type {
+  PrivacyPolicy,
+  SafetyPatternRule,
+  SafetyPolicyPatch,
+  Settings,
+  SettingsPatch,
+} from "@/lib/api"
 import { cn } from "@/lib/utils"
 import {
   ChevronDown,
-  ChevronRight,
   Clock,
   DatabaseBackup,
   FileClock,
-  Info,
-  KeyRound,
   MessageSquare,
+  Plus,
   Power,
   RotateCcw,
   ShieldAlert,
   ShieldBan,
+  Trash2,
   UserPlus,
 } from "lucide-react"
 
 const tabs = ["基础设置", "回复设置", "客户管理", "高级设置"] as const
 const replyStyles = ["专业友好", "自然轻松", "简洁高效"] as const
 
-const advancedItems = [
-  { label: "关键词管理", icon: KeyRound },
-  { label: "黑名单管理", icon: ShieldBan },
-  { label: "数据备份与恢复", icon: DatabaseBackup },
-  { label: "日志管理", icon: FileClock },
-  { label: "系统信息", icon: Info },
-]
-
 const safetyRuleGroups = [
   {
     id: "prompt_injection",
-    title: "Prompt 注入防护",
+    title: "提示词注入防护",
     desc: "忽略规则、系统提示词泄露等输入保持高风险拦截",
   },
   {
@@ -57,21 +63,18 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("基础设置")
   const [settings, setSettings] = useState<Settings | null>(null)
   const [privacy, setPrivacy] = useState<PrivacyPolicy | null>(null)
-  const [safetyPolicyAudit, setSafetyPolicyAudit] = useState<SafetyPolicyAuditRecord[]>([])
   const [desktopPreferences, setDesktopPreferences] = useState<DesktopShellPreferences | null>(null)
   const [desktopShellAvailable, setDesktopShellAvailable] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [message, setMessage] = useState("")
   const [error, setError] = useState("")
   const [isPending, startTransition] = useTransition()
 
   async function loadSettings() {
     setError("")
     const shellBridge = getDesktopShellBridge()
-    const [settingsResponse, privacyResponse, safetyAuditResponse, shellPreferences] = await Promise.all([
+    const [settingsResponse, privacyResponse, shellPreferences] = await Promise.all([
       apiClient.getSettings(),
       apiClient.getPrivacyPolicy(),
-      apiClient.getSafetyPolicyAudit(5),
       shellBridge.getPreferences(),
     ])
     if (!settingsResponse.success || !privacyResponse.success) {
@@ -80,7 +83,6 @@ export default function SettingsPage() {
     }
     setSettings(settingsResponse.data)
     setPrivacy(privacyResponse.data)
-    setSafetyPolicyAudit(safetyAuditResponse.success && safetyAuditResponse.data ? safetyAuditResponse.data : [])
     setDesktopShellAvailable(shellBridge.isAvailable())
     setDesktopPreferences(shellPreferences)
     setLoading(false)
@@ -96,32 +98,38 @@ export default function SettingsPage() {
   function updateSettings(patch: SettingsPatch, successMessage = "设置已保存") {
     startTransition(async () => {
       setError("")
-      setMessage("")
       const response = await apiClient.updateSettings(patch)
       if (!response.success || !response.data) {
-        setError(response.error ? `${response.error.code}: ${response.error.message}` : "设置保存失败")
+        toast({
+          title: "设置保存失败",
+          description: response.error ? `${response.error.code}: ${response.error.message}` : "请稍后重试",
+          variant: "destructive",
+          duration: 1800,
+        })
         return
       }
       setSettings(response.data)
       setPrivacy(response.data.privacy)
-      const auditResponse = await apiClient.getSafetyPolicyAudit(5)
-      setSafetyPolicyAudit(auditResponse.success && auditResponse.data ? auditResponse.data : [])
-      setMessage(successMessage)
+      toast({ title: successMessage, duration: 1800 })
     })
   }
 
   function updatePrivacy(patch: Partial<PrivacyPolicy>, successMessage = "隐私策略已保存") {
     startTransition(async () => {
       setError("")
-      setMessage("")
       const response = await apiClient.updatePrivacyPolicy(patch)
       if (!response.success || !response.data) {
-        setError(response.error ? `${response.error.code}: ${response.error.message}` : "隐私策略保存失败")
+        toast({
+          title: "隐私策略保存失败",
+          description: response.error ? `${response.error.code}: ${response.error.message}` : "请稍后重试",
+          variant: "destructive",
+          duration: 1800,
+        })
         return
       }
       setPrivacy(response.data)
       setSettings((current) => (current ? { ...current, privacy: response.data as PrivacyPolicy } : current))
-      setMessage(successMessage)
+      toast({ title: successMessage, duration: 1800 })
     })
   }
 
@@ -131,54 +139,67 @@ export default function SettingsPage() {
   ) {
     const shellBridge = getDesktopShellBridge()
     if (!shellBridge.isAvailable()) {
-      setError("当前不在 Electron 桌面端环境，无法保存桌面偏好")
+      toast({
+        title: "桌面偏好保存失败",
+        description: "当前不在 Electron 桌面端环境，无法保存桌面偏好",
+        variant: "destructive",
+        duration: 1800,
+      })
       return
     }
     startTransition(async () => {
       setError("")
-      setMessage("")
       const nextPreferences = await shellBridge.updatePreferences(patch)
       if (!nextPreferences) {
-        setError("桌面偏好保存失败")
+        toast({
+          title: "桌面偏好保存失败",
+          description: "请稍后重试",
+          variant: "destructive",
+          duration: 1800,
+        })
         return
       }
       setDesktopPreferences(nextPreferences)
       setDesktopShellAvailable(true)
-      setMessage(successMessage)
+      toast({ title: successMessage, duration: 1800 })
     })
   }
 
   function importSafetyPolicy(policy: SafetyPolicyPatch) {
     startTransition(async () => {
       setError("")
-      setMessage("")
       const response = await apiClient.importSafetyPolicy({ safety_policy: policy })
       if (!response.success || !response.data) {
-        setError(response.error ? `${response.error.code}: ${response.error.message}` : "Safety policy import failed")
+        toast({
+          title: "安全策略导入失败",
+          description: response.error ? `${response.error.code}: ${response.error.message}` : "请稍后重试",
+          variant: "destructive",
+          duration: 1800,
+        })
         return
       }
       const safetyPolicy = response.data
       setSettings((current) => (current ? { ...current, safety_policy: safetyPolicy } : current))
-      const auditResponse = await apiClient.getSafetyPolicyAudit(5)
-      setSafetyPolicyAudit(auditResponse.success && auditResponse.data ? auditResponse.data : [])
-      setMessage("Safety policy imported")
+      toast({ title: "安全策略已导入", duration: 1800 })
     })
   }
 
   function restoreDefaultSafetyPolicy() {
     startTransition(async () => {
       setError("")
-      setMessage("")
       const response = await apiClient.restoreDefaultSafetyPolicy()
       if (!response.success || !response.data) {
-        setError(response.error ? `${response.error.code}: ${response.error.message}` : "Safety policy restore failed")
+        toast({
+          title: "安全策略恢复失败",
+          description: response.error ? `${response.error.code}: ${response.error.message}` : "请稍后重试",
+          variant: "destructive",
+          duration: 1800,
+        })
         return
       }
       const safetyPolicy = response.data
       setSettings((current) => (current ? { ...current, safety_policy: safetyPolicy } : current))
-      const auditResponse = await apiClient.getSafetyPolicyAudit(5)
-      setSafetyPolicyAudit(auditResponse.success && auditResponse.data ? auditResponse.data : [])
-      setMessage("Safety policy restored")
+      toast({ title: "安全策略已恢复默认", duration: 1800 })
     })
   }
 
@@ -191,8 +212,8 @@ export default function SettingsPage() {
 
   return (
     <AppShell title="设置">
-      <div className="flex min-h-[656px] flex-1">
-        <section className="flex-1 p-8">
+      <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--app-content-bg)]">
+        <section className="min-w-0 flex-1 overflow-y-auto p-8">
           <div className="mb-6 flex gap-6 border-b border-slate-200">
             {tabs.map((tab) => (
               <button
@@ -210,11 +231,6 @@ export default function SettingsPage() {
           </div>
 
           {error ? <div className="mb-4"><ErrorState message={error} /></div> : null}
-          {message ? (
-            <div className="mb-4 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
-              {message}
-            </div>
-          ) : null}
 
           {loading ? (
             <LoadingState label="正在读取本地设置" />
@@ -223,18 +239,19 @@ export default function SettingsPage() {
               {activeTab === "基础设置" ? (
                 <BaseSettings
                   settings={settings}
-                  privacy={privacy}
                   pending={isPending}
                   updateSettings={updateSettings}
-                  updatePrivacy={updatePrivacy}
-                  setSensitiveReview={setSensitiveReview}
-                  safetyPolicyAudit={safetyPolicyAudit}
-                  importSafetyPolicy={importSafetyPolicy}
-                  restoreDefaultSafetyPolicy={restoreDefaultSafetyPolicy}
                 />
               ) : null}
               {activeTab === "回复设置" ? (
-                <ReplySettings settings={settings} pending={isPending} updateSettings={updateSettings} />
+                <ReplySettings
+                  settings={settings}
+                  pending={isPending}
+                  updateSettings={updateSettings}
+                  setSensitiveReview={setSensitiveReview}
+                  importSafetyPolicy={importSafetyPolicy}
+                  restoreDefaultSafetyPolicy={restoreDefaultSafetyPolicy}
+                />
               ) : null}
               {activeTab === "客户管理" ? (
                 <CustomerSettings settings={settings} pending={isPending} updateSettings={updateSettings} />
@@ -256,34 +273,6 @@ export default function SettingsPage() {
             <ErrorState message="设置数据为空，请确认后端服务是否运行。" />
           )}
         </section>
-
-        <aside className="w-[280px] shrink-0 border-l border-slate-200 bg-slate-50/40 p-6">
-          <div className="mb-4">
-            <h2 className="text-[15px] font-semibold text-slate-800">
-              高级设置 <span className="ml-1 text-xs font-normal text-slate-400">可选</span>
-            </h2>
-          </div>
-          <ul className="space-y-2">
-            {advancedItems.map((item) => {
-              const Icon = item.icon
-              return (
-                <li key={item.label}>
-                  <button className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:border-blue-200 hover:bg-blue-50/40">
-                    <span className="flex items-center gap-2">
-                      <Icon className="h-4 w-4 text-slate-500" />
-                      {item.label}
-                    </span>
-                    <ChevronRight className="h-4 w-4 text-slate-400" />
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-          <DesktopPreferenceSummary
-            desktopPreferences={desktopPreferences}
-            desktopShellAvailable={desktopShellAvailable}
-          />
-        </aside>
       </div>
     </AppShell>
   )
@@ -291,27 +280,57 @@ export default function SettingsPage() {
 
 function BaseSettings({
   settings,
-  privacy,
   pending,
   updateSettings,
-  updatePrivacy,
+}: {
+  settings: Settings
+  pending: boolean
+  updateSettings: (patch: SettingsPatch, successMessage?: string) => void
+}) {
+  return (
+    <>
+      <SettingRow
+        iconBg="bg-emerald-500"
+        icon={<Power className="h-5 w-5 text-white" />}
+        title="自动回复开关"
+        desc="开启后自动记录并生成回复"
+        right={<Switch checked={settings.auto_reply_enabled} disabled={pending} onChange={(value) => updateSettings({ auto_reply_enabled: value })} />}
+      />
+      <SettingRow
+        iconBg="bg-blue-500"
+        icon={<Clock className="h-5 w-5 text-white" />}
+        title="工作时间"
+        desc="仅在工作时间自动运行回复流程"
+        right={
+          <div className="flex items-center gap-2">
+            <TimeInput value={settings.work_hours.start} disabled={pending} onChange={(value) => updateSettings({ work_hours: { ...settings.work_hours, start: value } })} />
+            <span className="text-xs text-slate-400">-</span>
+            <TimeInput value={settings.work_hours.end} disabled={pending} onChange={(value) => updateSettings({ work_hours: { ...settings.work_hours, end: value } })} />
+          </div>
+        }
+      />
+    </>
+  )
+}
+
+function ReplySettings({
+  settings,
+  pending,
+  updateSettings,
   setSensitiveReview,
-  safetyPolicyAudit,
   importSafetyPolicy,
   restoreDefaultSafetyPolicy,
 }: {
   settings: Settings
-  privacy: PrivacyPolicy
   pending: boolean
   updateSettings: (patch: SettingsPatch, successMessage?: string) => void
-  updatePrivacy: (patch: Partial<PrivacyPolicy>, successMessage?: string) => void
   setSensitiveReview: (nextValue: boolean) => void
-  safetyPolicyAudit: SafetyPolicyAuditRecord[]
   importSafetyPolicy: (policy: SafetyPolicyPatch) => void
   restoreDefaultSafetyPolicy: () => void
 }) {
   const [safetyPolicyJson, setSafetyPolicyJson] = useState("")
   const [safetyPolicyJsonError, setSafetyPolicyJsonError] = useState("")
+  const [safetyPatternDrafts, setSafetyPatternDrafts] = useState<Record<string, string>>({})
 
   useEffect(() => {
     setSafetyPolicyJson(JSON.stringify(settings.safety_policy, null, 2))
@@ -343,6 +362,40 @@ function BaseSettings({
     )
   }
 
+  function saveSafetyRulePatterns(ruleId: string, nextPatterns: string[]) {
+    const cleanedPatterns = Array.from(new Set(nextPatterns.map((pattern) => pattern.trim()).filter(Boolean)))
+    updateSettings(
+      {
+        safety_policy: {
+          ...settings.safety_policy,
+          input_rules: settings.safety_policy.input_rules.map((rule) =>
+            rule.rule_id === ruleId ? { ...rule, patterns: cleanedPatterns } : rule,
+          ),
+          output_rules: settings.safety_policy.output_rules.map((rule) =>
+            rule.rule_id === ruleId ? { ...rule, patterns: cleanedPatterns } : rule,
+          ),
+        },
+      },
+      "安全词已保存",
+    )
+  }
+
+  function addSafetyPattern(rule: SafetyPatternRule) {
+    const draft = (safetyPatternDrafts[rule.rule_id] ?? "").trim()
+    if (!draft) {
+      return
+    }
+    saveSafetyRulePatterns(rule.rule_id, [...rule.patterns, draft])
+    setSafetyPatternDrafts((current) => ({ ...current, [rule.rule_id]: "" }))
+  }
+
+  function removeSafetyPattern(rule: SafetyPatternRule, pattern: string) {
+    saveSafetyRulePatterns(
+      rule.rule_id,
+      rule.patterns.filter((currentPattern) => currentPattern !== pattern),
+    )
+  }
+
   function resetSafetyPolicy() {
     restoreDefaultSafetyPolicy()
   }
@@ -351,7 +404,7 @@ function BaseSettings({
     setSafetyPolicyJsonError("")
     const response = await apiClient.exportSafetyPolicy()
     if (!response.success || !response.data) {
-      setSafetyPolicyJsonError(response.error ? `${response.error.code}: ${response.error.message}` : "Safety policy export failed")
+      setSafetyPolicyJsonError(response.error ? `${response.error.code}: ${response.error.message}` : "安全策略导出失败")
       return
     }
     setSafetyPolicyJson(JSON.stringify(response.data, null, 2))
@@ -363,11 +416,11 @@ function BaseSettings({
     try {
       parsed = JSON.parse(safetyPolicyJson)
     } catch {
-      setSafetyPolicyJsonError("Safety policy JSON is invalid")
+      setSafetyPolicyJsonError("安全策略配置格式不正确")
       return
     }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      setSafetyPolicyJsonError("Safety policy JSON must be an object")
+      setSafetyPolicyJsonError("安全策略配置必须是对象格式")
       return
     }
     importSafetyPolicy(parsed as SafetyPolicyPatch)
@@ -376,30 +429,10 @@ function BaseSettings({
   return (
     <>
       <SettingRow
-        iconBg="bg-emerald-500"
-        icon={<Power className="h-5 w-5 text-white" />}
-        title="自动回复开关"
-        desc="开启后将自动回复客户消息"
-        right={<Switch checked={settings.auto_reply_enabled} disabled={pending} onChange={(value) => updateSettings({ auto_reply_enabled: value })} />}
-      />
-      <SettingRow
-        iconBg="bg-blue-500"
-        icon={<Clock className="h-5 w-5 text-white" />}
-        title="工作时间"
-        desc="仅在工作时间自动回复"
-        right={
-          <div className="flex items-center gap-2">
-            <TimeInput value={settings.work_hours.start} disabled={pending} onChange={(value) => updateSettings({ work_hours: { ...settings.work_hours, start: value } })} />
-            <span className="text-xs text-slate-400">-</span>
-            <TimeInput value={settings.work_hours.end} disabled={pending} onChange={(value) => updateSettings({ work_hours: { ...settings.work_hours, end: value } })} />
-          </div>
-        }
-      />
-      <SettingRow
         iconBg="bg-violet-500"
         icon={<MessageSquare className="h-5 w-5 text-white" />}
         title="回复风格"
-        desc="设置自动回复的话术风格"
+        desc="影响 AI 生成回复时的语气和详略"
         right={
           <SelectValue
             value={settings.reply_style || "专业友好"}
@@ -410,11 +443,18 @@ function BaseSettings({
         }
       />
       <SettingRow
-        iconBg="bg-orange-500"
-        icon={<UserPlus className="h-5 w-5 text-white" />}
-        title="新客户自动建档"
-        desc="新客户咨询时自动创建客户档案"
-        right={<Switch checked={settings.new_customer_auto_create} disabled={pending} onChange={(value) => updateSettings({ new_customer_auto_create: value })} />}
+        iconBg="bg-blue-500"
+        icon={<Clock className="h-5 w-5 text-white" />}
+        title="请求超时"
+        desc="模型和知识库检索的最长等待时间"
+        right={<NumberInput value={settings.request_timeout_seconds} min={1} max={300} disabled={pending} suffix="秒" onChange={(value) => updateSettings({ request_timeout_seconds: value })} />}
+      />
+      <SettingRow
+        iconBg="bg-emerald-500"
+        icon={<Power className="h-5 w-5 text-white" />}
+        title="重试次数"
+        desc="网络或模型临时失败时的自动重试次数"
+        right={<NumberInput value={settings.retry_attempts} min={0} max={10} disabled={pending} suffix="次" onChange={(value) => updateSettings({ retry_attempts: value })} />}
       />
       <SettingRow
         iconBg="bg-rose-500"
@@ -443,8 +483,17 @@ function BaseSettings({
         iconBg="bg-slate-600"
         icon={<RotateCcw className="h-5 w-5 text-white" />}
         title="恢复默认安全策略"
-        desc="恢复 prompt 注入、敏感信息、业务风险的默认规则组配置"
+        desc="恢复提示词注入、敏感信息、业务风险的默认规则组配置"
         right={<IconButton label="恢复默认" disabled={pending} onClick={resetSafetyPolicy} />}
+      />
+      <SafetyPatternManager
+        inputRules={settings.safety_policy.input_rules}
+        outputRules={settings.safety_policy.output_rules}
+        drafts={safetyPatternDrafts}
+        pending={pending}
+        onDraftChange={(ruleId, value) => setSafetyPatternDrafts((current) => ({ ...current, [ruleId]: value }))}
+        onAdd={addSafetyPattern}
+        onRemove={removeSafetyPattern}
       />
       <SafetyPolicyImportExportPanel
         value={safetyPolicyJson}
@@ -454,64 +503,179 @@ function BaseSettings({
         onExport={exportSafetyPolicy}
         onImport={submitSafetyPolicyImport}
       />
-      <SafetyPolicyAuditTrail records={safetyPolicyAudit} />
-      <SettingRow
-        iconBg="bg-slate-600"
-        icon={<FileClock className="h-5 w-5 text-white" />}
-        title="日志保留天数"
-        desc="自动清理过期日志，降低本地敏感数据残留"
-        right={
-          <NumberInput
-            value={privacy.log_retention_days}
-            min={1}
-            max={365}
-            disabled={pending}
-            suffix="天"
-            onChange={(value) => updatePrivacy({ log_retention_days: value })}
-          />
-        }
-      />
     </>
   )
 }
 
-function SafetyPolicyAuditTrail({ records }: { records: SafetyPolicyAuditRecord[] }) {
+function SafetyPatternManager({
+  inputRules,
+  outputRules,
+  drafts,
+  pending,
+  onDraftChange,
+  onAdd,
+  onRemove,
+}: {
+  inputRules: SafetyPatternRule[]
+  outputRules: SafetyPatternRule[]
+  drafts: Record<string, string>
+  pending: boolean
+  onDraftChange: (ruleId: string, value: string) => void
+  onAdd: (rule: SafetyPatternRule) => void
+  onRemove: (rule: SafetyPatternRule, pattern: string) => void
+}) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-5 py-4">
-      <div className="mb-3 flex items-center gap-2">
-        <FileClock className="h-4 w-4 text-slate-500" />
-        <h3 className="text-sm font-semibold text-slate-800">Safety Policy Audit</h3>
-      </div>
-      {records.length ? (
-        <div className="space-y-2">
-          {records.map((record) => (
-            <div key={`${record.timestamp}-${record.action}`} className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-medium text-slate-700">
-                <span>{record.action}</span>
-                <span>{record.timestamp || "-"}</span>
-                <span>operator: {record.operator || "system"}</span>
-                <span>source: {record.source || "service"}</span>
-              </div>
-              <div className="mt-1 text-slate-500">
-                changed_rule_groups: {formatChangedRuleGroups(record.changed_rule_groups)}
-                {record.reset_to_defaults ? " reset_to_defaults" : ""}
+    <SettingRow
+      iconBg="bg-slate-600"
+      icon={<ShieldAlert className="h-5 w-5 text-white" />}
+      title="安全词管理"
+      desc="按安全类别维护输入和输出拦截词"
+      right={
+        <Dialog>
+          <DialogTrigger asChild>
+            <IconButton label="设置" disabled={pending} onClick={() => undefined} />
+          </DialogTrigger>
+          <DialogContent className="max-h-[82vh] max-w-[860px] overflow-hidden p-0">
+            <DialogHeader className="border-b border-slate-200 px-5 py-4">
+              <DialogTitle className="text-base text-slate-900">安全词管理</DialogTitle>
+              <DialogDescription>按输入、输出方向维护拦截词，保存后会影响后续回复审核。</DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+              <div className="space-y-5">
+                {safetyRuleGroups.map((group) => {
+                  const rules = [...inputRules, ...outputRules].filter((rule) => rule.rule_group === group.id)
+                  return (
+                    <section key={group.id} className="border-t border-slate-100 pt-4 first:border-t-0 first:pt-0">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h4 className="text-sm font-medium text-slate-800">{group.title}</h4>
+                          <p className="mt-0.5 text-xs text-slate-500">{group.desc}</p>
+                        </div>
+                        <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500">
+                          {rules.reduce((total, rule) => total + rule.patterns.length, 0)} 条
+                        </span>
+                      </div>
+                      <div className="grid gap-3 xl:grid-cols-2">
+                        {rules.map((rule) => (
+                          <SafetyRulePatternEditor
+                            key={rule.rule_id}
+                            rule={rule}
+                            direction={inputRules.some((inputRule) => inputRule.rule_id === rule.rule_id) ? "输入" : "输出"}
+                            draft={drafts[rule.rule_id] ?? ""}
+                            pending={pending}
+                            onDraftChange={(value) => onDraftChange(rule.rule_id, value)}
+                            onAdd={() => onAdd(rule)}
+                            onRemove={(pattern) => onRemove(rule, pattern)}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  )
+                })}
               </div>
             </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-xs text-slate-500">No safety policy audit records.</p>
-      )}
+          </DialogContent>
+        </Dialog>
+      }
+    />
+  )
+}
+
+function SafetyRulePatternEditor({
+  rule,
+  direction,
+  draft,
+  pending,
+  onDraftChange,
+  onAdd,
+  onRemove,
+}: {
+  rule: SafetyPatternRule
+  direction: "输入" | "输出"
+  draft: string
+  pending: boolean
+  onDraftChange: (value: string) => void
+  onAdd: () => void
+  onRemove: (pattern: string) => void
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">{direction}</span>
+        <span className="rounded-md bg-white px-2 py-1 text-xs text-slate-500">{formatSafetyRuleCode(rule.reason_code || rule.rule_id)}</span>
+        <span className="rounded-md bg-white px-2 py-1 text-xs text-slate-500">{formatSafetyMatchType(rule.match_type)}</span>
+        {!rule.enabled ? <span className="rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-700">已停用</span> : null}
+      </div>
+      <div className="mb-3 flex gap-2">
+        <input
+          type="text"
+          value={draft}
+          disabled={pending}
+          placeholder="新增安全词"
+          onChange={(event) => onDraftChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault()
+              onAdd()
+            }
+          }}
+          className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-blue-400 disabled:opacity-60"
+        />
+        <button
+          type="button"
+          disabled={pending || !draft.trim()}
+          onClick={onAdd}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50/50 disabled:cursor-not-allowed disabled:opacity-60"
+          aria-label={`新增安全词到 ${formatSafetyRuleCode(rule.reason_code || rule.rule_id)}`}
+          title="新增安全词"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="flex max-h-24 flex-wrap gap-2 overflow-hidden">
+        {rule.patterns.length ? (
+          rule.patterns.map((pattern) => (
+            <span
+              key={pattern}
+              className="inline-flex max-w-full items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600"
+            >
+              <span className="min-w-0 truncate">{pattern}</span>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => onRemove(pattern)}
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label={`删除 ${pattern}`}
+                title="删除安全词"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          ))
+        ) : (
+          <p className="text-xs text-slate-500">暂无安全词。</p>
+        )}
+      </div>
     </div>
   )
 }
 
-function formatChangedRuleGroups(groups: Record<string, boolean>) {
-  const entries = Object.entries(groups)
-  if (!entries.length) {
-    return "-"
-  }
-  return entries.map(([key, enabled]) => `${key}=${enabled ? "on" : "off"}`).join(", ")
+function formatSafetyRuleCode(code: string) {
+  const normalized = code.toLowerCase()
+  if (normalized === "prompt_injection" || normalized.includes("prompt")) return "提示词注入"
+  if (normalized === "sensitive_information" || normalized.includes("sensitive")) return "敏感信息"
+  if (normalized === "business_risk" || normalized.includes("business")) return "业务风险"
+  if (normalized.includes("keyword")) return "关键词匹配"
+  if (normalized.includes("regex")) return "规则匹配"
+  return code || "-"
+}
+
+function formatSafetyMatchType(matchType: string) {
+  const normalized = matchType.toLowerCase()
+  if (normalized === "keyword") return "关键词"
+  if (normalized === "regex") return "正则规则"
+  if (normalized === "contains") return "包含匹配"
+  return matchType || "-"
 }
 
 function SafetyPolicyImportExportPanel({
@@ -530,62 +694,39 @@ function SafetyPolicyImportExportPanel({
   onImport: () => void
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-5 py-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-800">Safety Policy Import / Export</h3>
-          <p className="mt-1 text-xs text-slate-500">Copy-paste JSON surface for recovery without file upload.</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <IconButton label="Export JSON" disabled={pending} onClick={onExport} />
-          <IconButton label="Import JSON" disabled={pending} onClick={onImport} />
-        </div>
-      </div>
-      <textarea
-        value={value}
-        disabled={pending}
-        spellCheck={false}
-        onChange={(event) => onChange(event.target.value)}
-        className="min-h-[160px] w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700 outline-none transition-colors focus:border-blue-400 disabled:opacity-60"
-      />
-      {error ? <p className="mt-2 text-xs font-medium text-rose-600">{error}</p> : null}
-    </div>
-  )
-}
-
-function ReplySettings({
-  settings,
-  pending,
-  updateSettings,
-}: {
-  settings: Settings
-  pending: boolean
-  updateSettings: (patch: SettingsPatch, successMessage?: string) => void
-}) {
-  return (
-    <>
-      <SettingRow
-        iconBg="bg-violet-500"
-        icon={<MessageSquare className="h-5 w-5 text-white" />}
-        title="回复风格"
-        desc="影响 AI 生成回复时的语气和详略"
-        right={<SelectValue value={settings.reply_style || "专业友好"} disabled={pending} options={replyStyles} onChange={(value) => updateSettings({ reply_style: value })} />}
-      />
-      <SettingRow
-        iconBg="bg-blue-500"
-        icon={<Clock className="h-5 w-5 text-white" />}
-        title="请求超时"
-        desc="模型和知识库检索的最长等待时间"
-        right={<NumberInput value={settings.request_timeout_seconds} min={1} max={300} disabled={pending} suffix="秒" onChange={(value) => updateSettings({ request_timeout_seconds: value })} />}
-      />
-      <SettingRow
-        iconBg="bg-emerald-500"
-        icon={<Power className="h-5 w-5 text-white" />}
-        title="重试次数"
-        desc="网络或模型临时失败时的自动重试次数"
-        right={<NumberInput value={settings.retry_attempts} min={0} max={10} disabled={pending} suffix="次" onChange={(value) => updateSettings({ retry_attempts: value })} />}
-      />
-    </>
+    <SettingRow
+      iconBg="bg-slate-600"
+      icon={<FileClock className="h-5 w-5 text-white" />}
+      title="安全策略备份"
+      desc="导出或导入安全策略配置文本"
+      right={
+        <Dialog>
+          <DialogTrigger asChild>
+            <IconButton label="设置" disabled={pending} onClick={() => undefined} />
+          </DialogTrigger>
+          <DialogContent className="max-h-[82vh] max-w-[760px] overflow-hidden p-0">
+            <DialogHeader className="border-b border-slate-200 px-5 py-4">
+              <DialogTitle className="text-base text-slate-900">安全策略备份</DialogTitle>
+              <DialogDescription>可导出当前安全策略，也可粘贴配置文本后导入恢复。</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 px-5 py-4">
+              <div className="flex justify-end gap-2">
+                <IconButton label="导出配置" disabled={pending} onClick={onExport} />
+                <IconButton label="导入配置" disabled={pending} onClick={onImport} />
+              </div>
+              <textarea
+                value={value}
+                disabled={pending}
+                spellCheck={false}
+                onChange={(event) => onChange(event.target.value)}
+                className="min-h-[240px] w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700 outline-none transition-colors focus:border-blue-400 disabled:opacity-60"
+              />
+              {error ? <p className="text-xs font-medium text-rose-600">{error}</p> : null}
+            </div>
+          </DialogContent>
+        </Dialog>
+      }
+    />
   )
 }
 
@@ -717,41 +858,14 @@ function AdvancedSettings({
         desc="超过期限的记忆数据会在保留策略中清理"
         right={<NumberInput value={privacy.memory_retention_days} min={1} max={3650} disabled={pending} suffix="天" onChange={(value) => updatePrivacy({ memory_retention_days: value })} />}
       />
+      <SettingRow
+        iconBg="bg-slate-600"
+        icon={<FileClock className="h-5 w-5 text-white" />}
+        title="日志保留天数"
+        desc="自动清理过期日志，降低本地敏感数据残留"
+        right={<NumberInput value={privacy.log_retention_days} min={1} max={365} disabled={pending} suffix="天" onChange={(value) => updatePrivacy({ log_retention_days: value })} />}
+      />
     </>
-  )
-}
-
-function DesktopPreferenceSummary({
-  desktopPreferences,
-  desktopShellAvailable,
-}: {
-  desktopPreferences: DesktopShellPreferences | null
-  desktopShellAvailable: boolean
-}) {
-  return (
-    <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
-      <div className="mb-3 text-sm font-semibold text-slate-800">桌面偏好快照</div>
-      <div className="space-y-3 text-sm text-slate-600">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-slate-500">开机自启</span>
-          <span className="font-medium text-slate-800">
-            {desktopShellAvailable
-              ? desktopPreferences?.launchAtLogin
-                ? "已开启"
-                : "未开启"
-              : "仅 Electron 可用"}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-slate-500">定时巡检间隔</span>
-          <span className="font-medium text-slate-800">
-            {desktopShellAvailable && desktopPreferences
-              ? `${desktopPreferences.scheduleTickIntervalSeconds} 秒`
-              : "仅 Electron 可用"}
-          </span>
-        </div>
-      </div>
-    </div>
   )
 }
 

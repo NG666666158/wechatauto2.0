@@ -2,6 +2,15 @@
   "data": {
     "auto_reply_enabled": true,
     "blacklist": [],
+    "embedding_config": {
+      "api_key_preview": "",
+      "api_key_set": false,
+      "base_url": "https://api.openai.com/v1",
+      "dimensions": null,
+      "model": "text-embedding-3-small",
+      "provider": "fake",
+      "timeout": 30.0
+    },
     "esc_action": "pause",
     "force_stop_hotkey": "ctrl+shift+f12",
     "human_takeover_sessions": [],

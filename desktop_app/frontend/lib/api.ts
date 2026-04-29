@@ -161,6 +161,95 @@ export type WebKnowledgeBuildResult = {
   status: string
 }
 
+export type KnowledgeTask = {
+  id: string
+  type: string
+  title: string
+  status: string
+  stage: string
+  created_at: string
+  updated_at: string
+  summary: string
+  error: string
+  metadata: Record<string, unknown>
+}
+
+export type KnowledgeNormalizeFaqItem = {
+  question: string
+  answer: string
+  confidence: string
+}
+
+export type KnowledgeNormalizePreview = {
+  faq_items: KnowledgeNormalizeFaqItem[]
+  allowed_claims: string[]
+  forbidden_claims: string[]
+  handoff_rules: string[]
+  source_excerpt: string
+  warnings: string[]
+}
+
+export type KnowledgeNormalizeConfirmRequest = {
+  title?: string
+  source?: string
+  preview: KnowledgeNormalizePreview
+}
+
+export type KnowledgeNormalizeConfirmResult = {
+  file_path: string
+  file_name: string
+  metadata: Record<string, unknown>
+  import_result: KnowledgeImportResult | Record<string, unknown>
+}
+
+export type KnowledgeAcceptanceReportItem = {
+  query: string
+  top_chunk_id: string | null
+  top_score: number | null
+  source: string
+  retrieval_sources: string[]
+  match_terms: string[]
+  trust_status: string
+  verdict: string
+}
+
+export type KnowledgeAcceptanceReport = {
+  total_questions: number
+  answered_questions: number
+  missing_questions: number
+  average_top_score: number
+  trusted_result_count: number
+  needs_review: boolean
+  items: KnowledgeAcceptanceReportItem[]
+  markdown: string
+}
+
+export type KnowledgeAcceptanceReportRequest = {
+  questions: string[]
+  limit?: number
+  min_top_score?: number
+}
+
+export type EmbeddingConfig = {
+  provider: string
+  base_url: string
+  model: string
+  dimensions: number | null
+  timeout: number
+  api_key_set: boolean
+  api_key_preview: string
+}
+
+export type EmbeddingConfigPatch = Partial<Omit<EmbeddingConfig, "api_key_set" | "api_key_preview">> & {
+  api_key?: string
+}
+
+export type KnowledgeNormalizePreviewRequest = {
+  text: string
+  title?: string
+  source?: string
+}
+
 export type DashboardSummary = {
   app: AppStatus
   runtime: RuntimeStatus
@@ -168,6 +257,15 @@ export type DashboardSummary = {
   pending: {
     identity_drafts: number
     identity_candidates: number
+  }
+  activity: {
+    today_received_messages: number
+    today_replied_messages: number
+    today_replied_conversations: number
+    pending_total: number
+    pending_reply_jobs: number
+    pending_identity_items: number
+    pending_send_uncertain: number
   }
   send_uncertain?: SendUncertainMetrics
 }
@@ -257,15 +355,6 @@ export type SafetyPolicyImportBody = {
   safety_policy: SafetyPolicyPatch
 }
 
-export type SafetyPolicyAuditRecord = {
-  timestamp: string
-  action: string
-  changed_rule_groups: Record<string, boolean>
-  reset_to_defaults: boolean
-  operator: string
-  source: string
-}
-
 export type Settings = {
   auto_reply_enabled: boolean
   reply_style: string
@@ -293,6 +382,7 @@ export type Settings = {
   request_timeout_seconds: number
   retry_attempts: number
   real_send_enabled: boolean
+  embedding_config: EmbeddingConfig
   safety_policy: SafetyPolicyConfig
 }
 
@@ -300,8 +390,9 @@ export type SettingsPatch = Partial<
   Omit<
     Settings,
     | "safety_policy"
+    | "embedding_config"
   >
-> & { safety_policy?: SafetyPolicyPatch }
+> & { safety_policy?: SafetyPolicyPatch; embedding_config?: EmbeddingConfigPatch }
 
 export type PrivacyPolicyPatch = Partial<PrivacyPolicy>
 
@@ -348,6 +439,20 @@ export type ReplySuggestion = {
   embedding_trusted?: boolean | null
 }
 
+export type KnowledgeEvidenceSummary = {
+  doc_id: string
+  source: string
+  chunk_index: string
+  text: string
+  score?: number | null
+  knowledge_trust_status?: "trusted" | "fake" | "untrusted" | "unknown"
+  knowledge_trust_reason?: string
+}
+
+export type ReplyJobMetadata = Record<string, unknown> & {
+  knowledge_evidence?: KnowledgeEvidenceSummary[]
+}
+
 export type ReplyJob = {
   reply_job_id: string
   conversation_id: string
@@ -367,6 +472,7 @@ export type ReplyJob = {
   reviewed_at?: string | null
   send_status?: string
   send_result?: Record<string, unknown>
+  metadata?: ReplyJobMetadata
 }
 
 export type SendConfirmationResult = Record<string, unknown> & {
@@ -451,6 +557,8 @@ export type Customer = {
   last_contact_at: string | null
 }
 
+export type CustomerPatch = Partial<Pick<Customer, "display_name" | "status" | "tags" | "remark">>
+
 export type IdentityDraft = {
   draft_user_id: string
 }
@@ -465,6 +573,10 @@ export type SelfIdentity = {
 }
 
 export type SelfIdentityPatch = Partial<SelfIdentity>
+
+export type SelfIdentityGenerateRequest = {
+  display_name: string
+}
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_WECHAT_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8765/api/v1"
@@ -489,14 +601,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiResponse
     },
     cache: "no-store",
   })
-  const payload = (await response.json()) as ApiResponse<T>
+  const payload = (await response.json()) as ApiResponse<T> & { detail?: unknown }
   if (!response.ok) {
+    const detailMessage =
+      typeof payload.detail === "string"
+        ? payload.detail
+        : Array.isArray(payload.detail)
+          ? payload.detail
+              .map((item) =>
+                item && typeof item === "object" && "msg" in item ? String((item as { msg?: unknown }).msg) : "",
+              )
+              .filter(Boolean)
+              .join("；")
+          : ""
     return {
       success: false,
       data: null,
       error: payload.error ?? {
         code: `HTTP_${response.status}`,
-        message: response.statusText || "Request failed",
+        message: detailMessage || response.statusText || "Request failed",
       },
       trace_id: payload.trace_id ?? response.headers.get("x-trace-id") ?? "",
     }
@@ -509,6 +632,27 @@ function post<T>(path: string, body?: unknown) {
     method: "POST",
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+}
+
+async function postForm<T>(path: string, formData: FormData): Promise<ApiResponse<T>> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    body: formData,
+    cache: "no-store",
+  })
+  const payload = (await response.json()) as ApiResponse<T> & { detail?: unknown }
+  if (!response.ok) {
+    return {
+      success: false,
+      data: null,
+      error: payload.error ?? {
+        code: `HTTP_${response.status}`,
+        message: response.statusText || "Request failed",
+      },
+      trace_id: payload.trace_id ?? response.headers.get("x-trace-id") ?? "",
+    }
+  }
+  return payload
 }
 
 function patch<T>(path: string, body: unknown) {
@@ -548,7 +692,6 @@ export const apiClient = {
     post<RuntimeAction>("/runtime/bootstrap-start", STRICT_BOOTSTRAP_PAYLOAD),
   getSettings: () => request<Settings>("/settings"),
   updateSettings: (patchBody: SettingsPatch) => patch<Settings>("/settings", patchBody),
-  getSafetyPolicyAudit: (limit = 20) => request<SafetyPolicyAuditRecord[]>(withQuery("/settings/safety-policy/audit", { limit })),
   exportSafetyPolicy: () => request<SafetyPolicyConfig>("/settings/safety-policy/export"),
   importSafetyPolicy: (body: SafetyPolicyImportBody) => post<SafetyPolicyConfig>("/settings/safety-policy/import", body),
   restoreDefaultSafetyPolicy: () => post<SafetyPolicyConfig>("/settings/safety-policy/restore-defaults"),
@@ -556,10 +699,6 @@ export const apiClient = {
   updatePrivacyPolicy: (patchBody: PrivacyPolicyPatch) => patch<PrivacyPolicy>("/privacy/policy", patchBody),
   listConversations: () => request<ConversationListItem[]>("/conversations"),
   getConversation: (conversationId: string) => request<ConversationDetail>(`/conversations/${encodeURIComponent(conversationId)}`),
-  suggestReply: (conversationId: string, messageText: string) =>
-    post<ReplySuggestion>(`/conversations/${encodeURIComponent(conversationId)}/suggest`, { message_text: messageText }),
-  sendConversationReply: (conversationId: string, text: string) =>
-    post<SendReplyResult>(`/conversations/${encodeURIComponent(conversationId)}/send`, { text }),
   getConversationControl: (conversationId: string) =>
     request<ConversationControl>(`/controls/conversations/${encodeURIComponent(conversationId)}`),
   updateConversationControl: (conversationId: string, patchBody: ConversationControlPatch) =>
@@ -581,9 +720,12 @@ export const apiClient = {
   getSendUncertainMetrics: () => request<SendUncertainMetrics>("/jobs/send-uncertain/metrics"),
   listCustomers: () => request<Customer[]>("/customers"),
   getCustomer: (customerId: string) => request<Customer>(`/customers/${encodeURIComponent(customerId)}`),
+  updateCustomer: (customerId: string, patchBody: CustomerPatch) =>
+    patch<Customer>(`/customers/${encodeURIComponent(customerId)}`, patchBody),
   listIdentityDrafts: () => request<IdentityDraft[]>("/identity/drafts"),
   listIdentityCandidates: () => request<IdentityCandidate[]>("/identity/candidates"),
   getGlobalSelfIdentity: () => request<SelfIdentity>("/identity/self/global"),
+  generateGlobalSelfIdentity: (body: SelfIdentityGenerateRequest) => post<SelfIdentity>("/identity/self/global/generate", body),
   updateGlobalSelfIdentity: (patchBody: SelfIdentityPatch) => patch<SelfIdentity>("/identity/self/global", patchBody),
   getKnowledgeStatus: () => request<KnowledgeStatus>("/knowledge/status"),
   getKnowledgeTrustDiagnostics: () => request<KnowledgeTrustDiagnostics>("/knowledge/trust-diagnostics"),
@@ -595,7 +737,21 @@ export const apiClient = {
     request<KnowledgeAcceptanceSnapshot>(`/debug/knowledge-acceptance?q=${encodeURIComponent(query)}`),
   searchKnowledge: (query: string, limit = 3) =>
     request<KnowledgeSearchResult[]>(`/knowledge/search?q=${encodeURIComponent(query)}&limit=${limit}`),
+  listKnowledgeTasks: (limit = 20) => request<KnowledgeTask[]>(withQuery("/knowledge/tasks", { limit })),
+  buildKnowledgeNormalizePreview: (body: KnowledgeNormalizePreviewRequest) =>
+    post<KnowledgeNormalizePreview>("/knowledge/ai-normalize-preview", body),
+  confirmKnowledgeNormalizePreview: (body: KnowledgeNormalizeConfirmRequest) =>
+    post<KnowledgeNormalizeConfirmResult>("/knowledge/ai-normalize-confirm", body),
+  buildKnowledgeAcceptanceReport: (body: KnowledgeAcceptanceReportRequest) =>
+    post<KnowledgeAcceptanceReport>("/knowledge/acceptance-report", body),
   importKnowledgeFiles: (filePaths: string[]) => post<KnowledgeImportResult>("/knowledge/import", { file_paths: filePaths }),
+  uploadKnowledgeFiles: (files: File[]) => {
+    const formData = new FormData()
+    for (const file of files) {
+      formData.append("files", file, file.name)
+    }
+    return postForm<KnowledgeImportResult>("/knowledge/upload", formData)
+  },
   buildWebKnowledgeFromDocuments: (filePaths: string[], searchLimit = 5) =>
     post<WebKnowledgeBuildResult>("/knowledge/web-build", { file_paths: filePaths, search_limit: searchLimit }),
 }

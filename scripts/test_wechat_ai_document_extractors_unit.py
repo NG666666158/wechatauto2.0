@@ -82,6 +82,23 @@ class DocumentExtractorsTests(TestCase):
         finally:
             shutil.rmtree(root, ignore_errors=True)
 
+    def test_extract_docx_reports_missing_dependency_in_chinese(self) -> None:
+        from wechat_ai.rag.document_extractors import DocumentExtractorRegistry
+
+        root = _fresh_dir(".tmp_document_extractors_docx_missing_dependency")
+        try:
+            source = root / "guide.docx"
+            source.write_bytes(b"fake-docx")
+
+            def missing_dependency(module_name: str, attr_name: str):
+                raise RuntimeError(f"缺少文档解析依赖：python-docx，module={module_name}, attr={attr_name}")
+
+            with patch("wechat_ai.rag.document_extractors._import_optional", side_effect=missing_dependency):
+                with self.assertRaisesRegex(RuntimeError, "python-docx"):
+                    DocumentExtractorRegistry().extract(source)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
     def test_extract_image_uses_windows_ocr_output(self) -> None:
         from wechat_ai.rag.document_extractors import DocumentExtractorRegistry
 

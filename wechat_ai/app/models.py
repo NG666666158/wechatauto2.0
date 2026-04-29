@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from wechat_ai.app.embedding_config import DesktopEmbeddingConfig
 from wechat_ai.safety import SafetyPolicyConfig, default_safety_policy_config
 
 
@@ -51,6 +52,7 @@ class SettingsSnapshot:
     request_timeout_seconds: float = 30.0
     retry_attempts: int = 2
     real_send_enabled: bool = False
+    embedding_config: DesktopEmbeddingConfig = field(default_factory=DesktopEmbeddingConfig)
     safety_policy: SafetyPolicyConfig = field(default_factory=default_safety_policy_config)
 
 

@@ -32,6 +32,12 @@ def parse_args() -> argparse.Namespace:
         default=200,
         help="Character overlap between adjacent chunks.",
     )
+    parser.add_argument(
+        "--chunk-strategy",
+        choices=("recursive", "semantic_overlap"),
+        default="semantic_overlap",
+        help="Chunking strategy used to split documents.",
+    )
     return parser.parse_args()
 
 
@@ -60,6 +66,7 @@ def main() -> int:
             index_path=resolved_index_path,
             chunk_size=args.chunk_size,
             overlap=args.overlap,
+            chunk_strategy=args.chunk_strategy,
         )
     except Exception as exc:
         print(f"Knowledge index rebuild failed: {exc}", file=sys.stderr)

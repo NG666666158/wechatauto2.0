@@ -13,17 +13,24 @@ from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
 from wechat_ai import paths
+from wechat_ai.config import MiniMaxSettings
 from wechat_ai.identity import identity_admin
 from wechat_ai.logging_utils import sanitize_text, tail_jsonl_events, utc_timestamp
+from wechat_ai.minimax_provider import MiniMaxProvider
 from wechat_ai.models import Message
 from wechat_ai.orchestration.prompt_builder import PromptBuilder
+from wechat_ai.profile.profile_store import ProfileStore
+from wechat_ai.rag.ai_normalizer import AINormalizer
+from wechat_ai.rag.acceptance_report import build_acceptance_report, render_acceptance_report_markdown
 from wechat_ai.rag.embeddings import EmbeddingProviderInfo, FakeEmbeddings, build_embeddings, embedding_provider_info
 from wechat_ai.rag.hybrid_retriever import HybridRetriever
 from wechat_ai.rag.keyword_retriever import KeywordRetriever
+from wechat_ai.rag.normalized_writer import NormalizedKnowledgeWriter
 from wechat_ai.rag.retriever import LocalIndexRetriever, index_has_trusted_embeddings
 from wechat_ai.runtime import (
     SendCoordinator,
     UiActionLock,
+    build_compact_knowledge_evidence,
     build_knowledge_evidence,
     build_knowledge_trust_metadata,
     evaluate_conversation_send_preflight,
@@ -37,6 +44,7 @@ from wechat_ai.self_identity import admin as self_identity_admin
 from .daemon_controller import DaemonController
 from .conversation_store import ConversationStore, conversation_title
 from .knowledge_importer import KnowledgeImporter
+from .knowledge_tasks import KnowledgeTaskStore
 from .models import AppStatus, ConversationListItem, CustomerRecord, ReplySuggestion
 from .schedule_manager import ScheduleManager
 from .safety_audit import SafetyPolicyAuditTrail
@@ -283,6 +291,9 @@ class DesktopAppService:
         reply_sender: Any | None = None,
         send_confirmer: Any | None = None,
         wechat_window_probe: Any | None = None,
+        self_identity_generator: Any | None = None,
+        knowledge_task_store: KnowledgeTaskStore | None = None,
+        knowledge_ai_normalizer: AINormalizer | None = None,
     ) -> None:
         root = Path(data_root) if data_root is not None else paths.DATA_DIR
         self.data_root = root
@@ -292,6 +303,7 @@ class DesktopAppService:
         self.runtime_log_path = root / "logs" / "runtime_events.jsonl"
         self.runtime_log_path.parent.mkdir(parents=True, exist_ok=True)
         self.conversation_store_path = self.app_dir / "conversations.json"
+        self.customer_overrides_path = self.app_dir / "customer_overrides.json"
         self.knowledge_acceptance_history_path = self.app_dir / "knowledge_acceptance_history.jsonl"
         self.conversation_store = ConversationStore(self.conversation_store_path)
         self.runtime_state_store = RuntimeStateStore(self.app_dir / "runtime_state.sqlite3")
@@ -311,13 +323,17 @@ class DesktopAppService:
             knowledge_dir=root / "knowledge",
             knowledge_importer=self.knowledge_importer,
         )
+        self.knowledge_task_store = knowledge_task_store or KnowledgeTaskStore(self.app_dir / "knowledge_tasks.json")
+        self.knowledge_ai_normalizer = knowledge_ai_normalizer
         self.reply_pipeline = reply_pipeline
         self.reply_sender = reply_sender
         self.send_confirmer = send_confirmer
         self.wechat_window_probe = wechat_window_probe
+        self.self_identity_generator = self_identity_generator
         self.ui_action_lock = UiActionLock()
         self.identity_admin = identity_admin_module or identity_admin
         self.self_identity_admin = self_identity_admin
+        self._sync_existing_customer_profiles()
 
     def get_app_status(self) -> AppStatus:
         settings = self.get_settings()
@@ -637,15 +653,18 @@ class DesktopAppService:
     def list_customers(self) -> list[CustomerRecord]:
         records: list[CustomerRecord] = []
         seen_ids: set[str] = set()
+        overrides = self._load_customer_overrides()
         for user in self.identity_admin.list_users(base_dir=self.identity_dir):
-            seen_ids.add(str(user["user_id"]))
+            customer_id = str(user["user_id"])
+            seen_ids.add(customer_id)
+            override = overrides.get(customer_id, {})
             records.append(
                 CustomerRecord(
-                    customer_id=str(user["user_id"]),
-                    display_name=str(user.get("canonical_name", "")),
-                    status=str(user.get("status", "confirmed")),
-                    tags=list(user.get("tags", [])) if isinstance(user.get("tags"), list) else [],
-                    remark=str(user.get("remark", "")),
+                    customer_id=customer_id,
+                    display_name=str(override.get("display_name", user.get("canonical_name", ""))),
+                    status=str(override.get("status", user.get("status", "confirmed"))),
+                    tags=list(override.get("tags", user.get("tags", []))) if isinstance(override.get("tags", user.get("tags", [])), list) else [],
+                    remark=str(override.get("remark", user.get("remark", ""))),
                     last_contact_at=str(user.get("updated_at", "")) or None,
                 )
             )
@@ -654,13 +673,14 @@ class DesktopAppService:
                 continue
             if bool(record.get("is_group", str(conversation_id).startswith("group:"))):
                 continue
+            override = overrides.get(str(conversation_id), {})
             records.append(
                 CustomerRecord(
                     customer_id=str(conversation_id),
-                    display_name=str(record.get("title", "")) or conversation_title(str(conversation_id)),
-                    status="draft",
-                    tags=["本地会话"],
-                    remark="来自自动回复聊天记录，待补充用户画像",
+                    display_name=str(override.get("display_name", record.get("title", ""))) or conversation_title(str(conversation_id)),
+                    status=str(override.get("status", "draft")),
+                    tags=list(override.get("tags", ["本地会话"])) if isinstance(override.get("tags", ["本地会话"]), list) else ["本地会话"],
+                    remark=str(override.get("remark", "来自自动回复聊天记录，待补充用户画像")),
                     last_contact_at=str(record.get("updated_at", "")) or None,
                 )
             )
@@ -672,21 +692,122 @@ class DesktopAppService:
                 return asdict(customer) | {"display_name": customer.display_name}
         record = self.conversation_store.get_record(customer_id)
         if record.get("messages"):
+            override = self._load_customer_overrides().get(customer_id, {})
             return {
                 "customer_id": customer_id,
-                "display_name": str(record.get("title", "")) or conversation_title(customer_id),
-                "status": "draft",
-                "tags": ["本地会话"],
-                "remark": "来自自动回复聊天记录，待补充用户画像",
+                "display_name": str(override.get("display_name", record.get("title", ""))) or conversation_title(customer_id),
+                "status": str(override.get("status", "draft")),
+                "tags": list(override.get("tags", ["本地会话"])) if isinstance(override.get("tags", ["本地会话"]), list) else ["本地会话"],
+                "remark": str(override.get("remark", "来自自动回复聊天记录，待补充用户画像")),
                 "last_contact_at": str(record.get("updated_at", "")) or None,
             }
         return {"status": "not_found", "customer_id": customer_id}
+
+    def update_customer(self, customer_id: str, patch: Mapping[str, object]) -> dict[str, Any]:
+        current = self.get_customer(customer_id)
+        if current.get("status") == "not_found":
+            return current
+        allowed_keys = {"display_name", "status", "tags", "remark"}
+        cleaned: dict[str, object] = {}
+        for key in allowed_keys:
+            if key not in patch:
+                continue
+            value = patch[key]
+            if key == "tags":
+                if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+                    cleaned[key] = [str(item).strip() for item in value if str(item).strip()]
+                continue
+            cleaned[key] = str(value).strip()
+        overrides = self._load_customer_overrides()
+        previous = overrides.get(customer_id, {})
+        overrides[customer_id] = {**previous, **cleaned}
+        self._save_customer_overrides(overrides)
+        self._sync_customer_user_profile(customer_id, {**current, **cleaned})
+        return self.get_customer(customer_id)
+
+    def _sync_customer_user_profile(self, customer_id: str, customer: Mapping[str, object]) -> None:
+        profile_ids = [str(customer_id).strip()]
+        display_name = str(customer.get("display_name", "")).strip()
+        if display_name and display_name not in profile_ids:
+            profile_ids.append(display_name)
+        for profile_id in profile_ids:
+            if profile_id:
+                self._sync_single_customer_user_profile(profile_id, customer)
+
+    def _sync_single_customer_user_profile(self, profile_id: str, customer: Mapping[str, object]) -> None:
+        profile_store = ProfileStore(base_dir=self.data_root)
+        profile = profile_store.load_user_profile(profile_id)
+        display_name = str(customer.get("display_name", "")).strip()
+        status = str(customer.get("status", "")).strip()
+        remark = str(customer.get("remark", "")).strip()
+        tags = customer.get("tags", [])
+        if display_name and hasattr(profile, "display_name"):
+            profile.display_name = display_name
+        if isinstance(tags, Sequence) and not isinstance(tags, (str, bytes)) and hasattr(profile, "tags"):
+            profile.tags = [str(item).strip() for item in tags if str(item).strip()]
+        if hasattr(profile, "notes"):
+            profile.notes = [remark] if remark else []
+        if hasattr(profile, "preferences"):
+            preferences = dict(getattr(profile, "preferences", {}) or {})
+            if status:
+                preferences["客户状态"] = status
+            if remark:
+                preferences["客户备注"] = remark
+            profile.preferences = preferences
+        profile_store.save_user_profile(profile)
+
+    def _sync_existing_customer_profiles(self) -> None:
+        for customer_id in self._load_customer_overrides():
+            customer = self.get_customer(customer_id)
+            if customer.get("status") != "not_found":
+                self._sync_customer_user_profile(customer_id, customer)
+
+    def _load_customer_overrides(self) -> dict[str, dict[str, object]]:
+        if not self.customer_overrides_path.exists():
+            return {}
+        try:
+            payload = json.loads(self.customer_overrides_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        if not isinstance(payload, dict):
+            return {}
+        return {str(key): value for key, value in payload.items() if isinstance(value, dict)}
+
+    def _save_customer_overrides(self, overrides: Mapping[str, Mapping[str, object]]) -> None:
+        self.customer_overrides_path.parent.mkdir(parents=True, exist_ok=True)
+        self.customer_overrides_path.write_text(
+            json.dumps(overrides, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     def get_global_self_identity(self) -> dict[str, Any]:
         return self.self_identity_admin.load_global_profile(base_dir=self.self_identity_dir)
 
     def update_global_self_identity(self, patch: Mapping[str, object]) -> dict[str, Any]:
         return self.self_identity_admin.update_global_profile(patch, base_dir=self.self_identity_dir)
+
+    def generate_global_self_identity(self, display_name: str) -> dict[str, Any]:
+        cleaned_name = str(display_name or "").strip()
+        if not cleaned_name:
+            raise ValueError("display_name is required")
+        provider = self.self_identity_generator
+        model = None
+        if provider is None:
+            settings = MiniMaxSettings.from_env()
+            provider = MiniMaxProvider(api_key=settings.api_key, api_url=settings.api_url, timeout=settings.timeout)
+            model = settings.model
+        content = provider.complete(
+            _self_identity_generation_system_prompt(),
+            _self_identity_generation_user_prompt(cleaned_name),
+            model=model,
+        )
+        facts = _parse_self_identity_generation(content)
+        if not facts:
+            raise ValueError("model returned empty identity facts")
+        return {
+            "display_name": cleaned_name,
+            "identity_facts": facts,
+        }
 
     def list_relationship_self_identity_profiles(self) -> list[dict[str, Any]]:
         return self.self_identity_admin.list_relationship_profiles(base_dir=self.self_identity_dir)
@@ -1110,6 +1231,48 @@ class DesktopAppService:
     def get_send_uncertain_metrics(self) -> dict[str, object]:
         return self.runtime_state_store.get_send_uncertain_metrics()
 
+    def get_dashboard_activity_metrics(self, *, now: datetime | None = None) -> dict[str, object]:
+        current_day = _local_day(now)
+        today_received_messages = 0
+        today_replied_messages = 0
+        replied_conversations: set[str] = set()
+
+        for conversation_id, record in self.conversation_store.list_records().items():
+            if not isinstance(record, dict):
+                continue
+            messages = record.get("messages", [])
+            if not isinstance(messages, list):
+                continue
+            for item in messages:
+                if not isinstance(item, dict):
+                    continue
+                sent_at = str(item.get("sent_at", "")).strip()
+                if not sent_at or _local_day_from_timestamp(sent_at) != current_day:
+                    continue
+                direction = str(item.get("direction", "incoming"))
+                if direction == "outgoing":
+                    today_replied_messages += 1
+                    replied_conversations.add(str(item.get("conversation_id") or conversation_id))
+                else:
+                    today_received_messages += 1
+
+        identity_drafts = len(self.list_identity_drafts())
+        identity_candidates = len(self.list_identity_candidates())
+        pending_identity_items = identity_drafts + identity_candidates
+        pending_reply_jobs = len(self.list_reply_jobs(status="PENDING_REVIEW", limit=1000))
+        send_uncertain_metrics = self.get_send_uncertain_metrics()
+        pending_send_uncertain = int(send_uncertain_metrics.get("unresolved_total", 0) or 0)
+
+        return {
+            "today_received_messages": today_received_messages,
+            "today_replied_messages": today_replied_messages,
+            "today_replied_conversations": len(replied_conversations),
+            "pending_total": pending_identity_items + pending_reply_jobs + pending_send_uncertain,
+            "pending_reply_jobs": pending_reply_jobs,
+            "pending_identity_items": pending_identity_items,
+            "pending_send_uncertain": pending_send_uncertain,
+        }
+
     def resolve_uncertain_send_job(
         self,
         send_job_id: str,
@@ -1169,6 +1332,10 @@ class DesktopAppService:
         safety = self._safety_policy_engine().assess_input(cleaned_text)
         if safety.need_human_review:
             normalized_id = str(conversation_id).strip()
+            knowledge_results = self.search_knowledge(cleaned_text, limit=3)
+            metadata: dict[str, Any] = {}
+            if knowledge_results:
+                metadata["knowledge_evidence"] = build_compact_knowledge_evidence(knowledge_results, limit=3)
             self.runtime_state_store.create_reply_job(
                 conversation_id=normalized_id,
                 trigger_event_ids=[
@@ -1185,6 +1352,7 @@ class DesktopAppService:
                 risk_level=safety.risk_level,
                 need_human_review=True,
                 reason_codes=safety.reason_codes,
+                metadata=metadata,
                 idempotency_key=RuntimeStateStore.message_signature(
                     conversation_id=normalized_id,
                     sender_name="customer",
@@ -1293,12 +1461,49 @@ class DesktopAppService:
         )
 
     def import_knowledge_files(self, file_paths: Sequence[Path | str]) -> dict[str, Any]:
-        result = self.knowledge_importer.import_files(file_paths)
-        return {
-            "files": [asdict(item) for item in result.files],
-            "index_status": asdict(result.index_status) if result.index_status is not None else self.get_knowledge_status(),
-            "index_rebuilt": result.index_status is not None,
-        }
+        normalized_paths = [str(path) for path in file_paths]
+        task = self.knowledge_task_store.append_task(
+            task_type="import",
+            title="本地文件入库",
+            status="running",
+            summary=f"准备处理 {len(normalized_paths)} 个文件",
+            metadata={"file_paths": normalized_paths},
+        )
+        try:
+            result = self.knowledge_importer.import_files(file_paths)
+            payload = {
+                "files": [asdict(item) for item in result.files],
+                "index_status": asdict(result.index_status) if result.index_status is not None else self.get_knowledge_status(),
+                "index_rebuilt": result.index_status is not None,
+            }
+            imported_count = sum(1 for item in result.files if item.status == "imported")
+            failed_files = [item for item in result.files if item.status != "imported"]
+            task_status = "failed" if failed_files and imported_count == 0 else "completed"
+            failure_summary = ""
+            if failed_files:
+                first_failed = failed_files[0]
+                failure_summary = first_failed.error_message or first_failed.status
+            self.knowledge_task_store.update_task(
+                str(task["id"]),
+                status=task_status,
+                summary=f"已入库 {imported_count} 个文件，索引{'已重建' if result.index_status is not None else '未重建'}",
+                error=failure_summary or None,
+                metadata={
+                    "imported_count": imported_count,
+                    "failed_count": len(failed_files),
+                    "file_count": len(result.files),
+                    "index_rebuilt": result.index_status is not None,
+                },
+            )
+            return payload
+        except Exception as exc:
+            self.knowledge_task_store.update_task(
+                str(task["id"]),
+                status="failed",
+                summary="本地文件入库失败",
+                error=str(exc),
+            )
+            raise
 
     def search_knowledge(self, query: str, *, limit: int = 3) -> list[dict[str, Any]]:
         status = self.knowledge_importer.get_status()
@@ -1437,8 +1642,22 @@ class DesktopAppService:
         }
 
     def rebuild_knowledge_with_trusted_embeddings(self, *, acceptance_query: str = "") -> dict[str, Any]:
+        task = self.knowledge_task_store.append_task(
+            task_type="rebuild",
+            title="可信向量重建",
+            status="running",
+            summary="正在检查可信向量配置",
+            metadata={"acceptance_query": acceptance_query},
+        )
         rebuild_availability = self._trusted_embedding_rebuild_availability()
         if not rebuild_availability["available"]:
+            self.knowledge_task_store.update_task(
+                str(task["id"]),
+                status="blocked",
+                summary="可信向量配置不可用",
+                error=str(rebuild_availability["block_reason"]),
+                metadata={"provider": rebuild_availability["provider"]},
+            )
             return {
                 "accepted": False,
                 "status": "blocked",
@@ -1451,25 +1670,45 @@ class DesktopAppService:
                 "acceptance_snapshot": None,
             }
 
-        index_status = asdict(self.knowledge_importer.rebuild_index())
-        diagnostics = self.get_knowledge_trust_diagnostics()
-        accepted = bool(index_status.get("embedding_trusted")) and diagnostics.get("trust_status") == "trusted"
-        acceptance_snapshot = None
-        normalized_query = str(acceptance_query or "").strip()
-        if accepted and normalized_query:
-            acceptance_snapshot = self.build_knowledge_acceptance_snapshot(normalized_query)
+        try:
+            index_status = asdict(self.knowledge_importer.rebuild_index())
             diagnostics = self.get_knowledge_trust_diagnostics()
-        return {
-            "accepted": accepted,
-            "status": "rebuilt" if accepted else "untrusted_after_rebuild",
-            "reason_code": "" if accepted else "KNOWLEDGE_REBUILD_NOT_TRUSTED",
-            "reason": "" if accepted else "knowledge index rebuild did not produce trusted embeddings",
-            "trusted_rebuild_provider": rebuild_availability["provider"],
-            "trusted_rebuild_block_reason": "",
-            "index_status": index_status,
-            "trust_diagnostics": diagnostics,
-            "acceptance_snapshot": acceptance_snapshot,
-        }
+            accepted = bool(index_status.get("embedding_trusted")) and diagnostics.get("trust_status") == "trusted"
+            acceptance_snapshot = None
+            normalized_query = str(acceptance_query or "").strip()
+            if accepted and normalized_query:
+                acceptance_snapshot = self.build_knowledge_acceptance_snapshot(normalized_query)
+                diagnostics = self.get_knowledge_trust_diagnostics()
+            self.knowledge_task_store.update_task(
+                str(task["id"]),
+                status="completed" if accepted else "needs_review",
+                summary="可信向量重建完成" if accepted else "索引已重建，但仍需复核",
+                metadata={
+                    "accepted": accepted,
+                    "provider": rebuild_availability["provider"],
+                    "documents_loaded": index_status.get("documents_loaded", 0),
+                    "chunks_created": index_status.get("chunks_created", 0),
+                },
+            )
+            return {
+                "accepted": accepted,
+                "status": "rebuilt" if accepted else "untrusted_after_rebuild",
+                "reason_code": "" if accepted else "KNOWLEDGE_REBUILD_NOT_TRUSTED",
+                "reason": "" if accepted else "knowledge index rebuild did not produce trusted embeddings",
+                "trusted_rebuild_provider": rebuild_availability["provider"],
+                "trusted_rebuild_block_reason": "",
+                "index_status": index_status,
+                "trust_diagnostics": diagnostics,
+                "acceptance_snapshot": acceptance_snapshot,
+            }
+        except Exception as exc:
+            self.knowledge_task_store.update_task(
+                str(task["id"]),
+                status="failed",
+                summary="可信向量重建失败",
+                error=str(exc),
+            )
+            raise
 
     def _trusted_embedding_rebuild_availability(self) -> dict[str, Any]:
         try:
@@ -1498,7 +1737,195 @@ class DesktopAppService:
         *,
         search_limit: int = 5,
     ) -> dict[str, object]:
-        return self.web_knowledge_builder.build_from_documents(file_paths, search_limit=search_limit)
+        normalized_paths = [str(path) for path in file_paths]
+        task = self.knowledge_task_store.append_task(
+            task_type="web_build",
+            title="联网扩库",
+            status="running",
+            summary=f"准备根据 {len(normalized_paths)} 个文件扩展资料",
+            metadata={"file_paths": normalized_paths, "search_limit": search_limit},
+        )
+        try:
+            payload = self.web_knowledge_builder.build_from_documents(file_paths, search_limit=search_limit)
+            documents = payload.get("documents", []) if isinstance(payload, Mapping) else []
+            self.knowledge_task_store.update_task(
+                str(task["id"]),
+                status="completed",
+                summary=f"联网扩库完成，生成 {len(documents) if isinstance(documents, list) else 0} 条资料",
+                metadata={"status": payload.get("status") if isinstance(payload, Mapping) else ""},
+            )
+            return payload
+        except Exception as exc:
+            self.knowledge_task_store.update_task(
+                str(task["id"]),
+                status="failed",
+                summary="联网扩库失败",
+                error=str(exc),
+            )
+            raise
+
+    def list_knowledge_tasks(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 100))
+        return self.knowledge_task_store.recent_tasks(limit=safe_limit)
+
+    def build_ai_knowledge_normalize_preview(
+        self,
+        *,
+        text: str,
+        title: str = "",
+        source: str = "",
+    ) -> dict[str, Any]:
+        task = self.knowledge_task_store.append_task(
+            task_type="ai_normalize",
+            title="AI 入库预处理",
+            status="running",
+            summary="正在生成结构化预览",
+            metadata={"title": title, "source": source},
+        )
+        normalizer = self.knowledge_ai_normalizer or AINormalizer(generator=self._generate_knowledge_normalization)
+        preview = normalizer.normalize_document(text=text, title=title, source=source)
+        warnings = preview.get("warnings", [])
+        self.knowledge_task_store.update_task(
+            str(task["id"]),
+            status="completed" if not warnings else "needs_review",
+            summary="AI 预处理预览已生成" if not warnings else "AI 预处理预览已生成，需复核提示",
+            metadata={
+                "faq_count": len(preview.get("faq_items", [])),
+                "allowed_claim_count": len(preview.get("allowed_claims", [])),
+                "forbidden_claim_count": len(preview.get("forbidden_claims", [])),
+                "handoff_rule_count": len(preview.get("handoff_rules", [])),
+                "warnings": warnings,
+            },
+        )
+        return dict(preview)
+
+    def confirm_ai_knowledge_normalize_preview(
+        self,
+        *,
+        preview: Mapping[str, Any],
+        title: str = "",
+        source: str = "",
+    ) -> dict[str, Any]:
+        task = self.knowledge_task_store.append_task(
+            task_type="ai_normalize_confirm",
+            title="AI 预处理确认入库",
+            status="running",
+            stage="queued",
+            summary="正在生成确认后的知识库文档",
+            metadata={"title": title, "source": source},
+        )
+        try:
+            document = NormalizedKnowledgeWriter().build_document(
+                preview=dict(preview),  # type: ignore[arg-type]
+                title=title,
+                source=source,
+            )
+            self.knowledge_task_store.advance_task(str(task["id"]), "extracting", summary="已生成 Markdown 入库文档")
+            normalized_dir = self.data_root / "knowledge" / "ai_normalized"
+            normalized_dir.mkdir(parents=True, exist_ok=True)
+            output_path = normalized_dir / document.filename
+            output_path.write_text(document.markdown, encoding="utf-8")
+            self.knowledge_task_store.advance_task(
+                str(task["id"]),
+                "indexing",
+                summary="正在导入确认后的知识库文档",
+                metadata={"generated_path": str(output_path), **dict(document.metadata)},
+            )
+            import_result = self.knowledge_importer.import_files([output_path])
+            payload = {
+                "file_path": str(output_path),
+                "file_name": document.filename,
+                "metadata": dict(document.metadata),
+                "import_result": {
+                    "files": [asdict(item) for item in import_result.files],
+                    "index_status": asdict(import_result.index_status)
+                    if import_result.index_status is not None
+                    else self.get_knowledge_status(),
+                    "index_rebuilt": import_result.index_status is not None,
+                },
+            }
+            self.knowledge_task_store.update_task(
+                str(task["id"]),
+                status="completed",
+                stage="completed",
+                summary="AI 预处理结果已确认入库",
+                metadata={"file_name": document.filename, "index_rebuilt": import_result.index_status is not None},
+            )
+            return payload
+        except Exception as exc:
+            self.knowledge_task_store.update_task(
+                str(task["id"]),
+                status="failed",
+                stage="failed",
+                summary="AI 预处理确认入库失败",
+                error=str(exc),
+            )
+            raise
+
+    def build_knowledge_acceptance_report(
+        self,
+        questions: Sequence[str],
+        *,
+        limit: int = 3,
+        min_top_score: float = 0.7,
+    ) -> dict[str, Any]:
+        cleaned_questions = [str(question).strip() for question in questions if str(question).strip()]
+        task = self.knowledge_task_store.append_task(
+            task_type="acceptance_report",
+            title="知识库检索验收",
+            status="running",
+            stage="validating",
+            summary=f"正在验收 {len(cleaned_questions)} 个问题",
+            metadata={"question_count": len(cleaned_questions), "limit": limit, "min_top_score": min_top_score},
+        )
+        try:
+            results_by_query = {
+                question: self.search_knowledge(question, limit=max(1, min(int(limit), 20)))
+                for question in cleaned_questions
+            }
+            report = build_acceptance_report(
+                cleaned_questions,
+                results_by_query,
+                min_top_score=float(min_top_score),
+            )
+            markdown = render_acceptance_report_markdown(report)
+            payload = {**report, "markdown": markdown}
+            self.knowledge_task_store.update_task(
+                str(task["id"]),
+                status="completed" if not report.get("needs_review") else "needs_review",
+                stage="completed",
+                summary=(
+                    f"验收完成：{report.get('answered_questions', 0)}/{report.get('total_questions', 0)} 个问题有命中"
+                ),
+                metadata={
+                    "needs_review": bool(report.get("needs_review", False)),
+                    "average_top_score": report.get("average_top_score", 0.0),
+                    "missing_questions": report.get("missing_questions", 0),
+                },
+            )
+            return payload
+        except Exception as exc:
+            self.knowledge_task_store.update_task(
+                str(task["id"]),
+                status="failed",
+                stage="failed",
+                summary="知识库检索验收失败",
+                error=str(exc),
+            )
+            raise
+
+    def _generate_knowledge_normalization(self, prompt: str) -> str:
+        settings = MiniMaxSettings.from_env()
+        provider = MiniMaxProvider(
+            api_key=settings.api_key,
+            api_url=settings.api_url,
+            timeout=settings.timeout,
+        )
+        return provider.complete(
+            system_prompt="你是微信客服知识库入库前的结构化预处理助手，只返回合法 JSON。",
+            user_prompt=prompt,
+            model=settings.model,
+        )
 
     def build_knowledge_acceptance_snapshot(
         self,
@@ -1888,6 +2315,93 @@ def _parse_event_timestamp(value: object) -> float | None:
         return datetime.fromisoformat(text).astimezone(timezone.utc).timestamp()
     except ValueError:
         return None
+
+
+def _self_identity_generation_system_prompt() -> str:
+    return (
+        "你是桌面微信自动回复软件的身份设定助手。"
+        "你的任务是根据用户填写的显示名称，生成适合作为大模型回复依据的全局自我身份事实。"
+        "必须贴合行业严谨程度，帮助明确能说什么、不能说什么、哪些信息必须核实、哪些场景要转人工。"
+        "不要编造具体公司、价格、资质、承诺或个人经历。"
+        "只返回 JSON，不要 Markdown，不要解释。"
+    )
+
+
+def _self_identity_generation_user_prompt(display_name: str) -> str:
+    return (
+        f"显示名称：{display_name}\n"
+        "请生成 8 到 12 条中文身份事实，每条是一句完整规则，适合直接提交给回复模型使用。\n"
+        "要求：\n"
+        "1. 第一条明确“我是谁”。\n"
+        "2. 覆盖服务范围、语气风格、可回答内容、必须核实内容、禁止承诺内容、隐私边界、转人工场景。\n"
+        "3. 医疗、法律、金融、财税、教育等高风险行业要更保守严谨。\n"
+        "4. 电商、客服、私域运营等场景要强调售前售后、订单、退款、投诉和平台规则边界。\n"
+        '返回格式：{"display_name":"原显示名称","identity_facts":["事实1","事实2"]}'
+    )
+
+
+def _parse_self_identity_generation(content: object) -> list[str]:
+    text = str(content or "").strip()
+    if not text:
+        return []
+    json_text = _strip_json_fence(text)
+    try:
+        payload = json.loads(json_text)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict):
+        facts = payload.get("identity_facts")
+        if isinstance(facts, list):
+            return _clean_identity_fact_lines(facts)
+    if isinstance(payload, list):
+        return _clean_identity_fact_lines(payload)
+    return _clean_identity_fact_lines(text.splitlines())
+
+
+def _strip_json_fence(text: str) -> str:
+    cleaned = text.strip()
+    if not cleaned.startswith("```"):
+        return cleaned
+    lines = cleaned.splitlines()
+    if lines and lines[0].strip().startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
+
+
+def _clean_identity_fact_lines(lines: Sequence[object]) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in lines:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        text = text.lstrip("-•*0123456789.、)） \t").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        cleaned.append(text[:240])
+        if len(cleaned) >= 12:
+            break
+    return cleaned
+
+
+def _local_day(value: datetime | None = None) -> str:
+    current = value or datetime.now().astimezone()
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return current.astimezone().date().isoformat()
+
+
+def _local_day_from_timestamp(value: str) -> str:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone().date().isoformat()
 
 
 def _is_wechat_running() -> bool:

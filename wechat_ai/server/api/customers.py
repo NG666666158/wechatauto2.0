@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 from wechat_ai.server.api._service import desktop_service
 from wechat_ai.server.core import success_response
 from wechat_ai.server.schemas import ApiResponse, CustomerData
+from wechat_ai.server.schemas.frontend import CustomerPatchRequest
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
@@ -21,6 +22,14 @@ def list_customers(request: Request) -> dict[str, object]:
 @router.get("/{customer_id}", response_model=ApiResponse[CustomerData])
 def get_customer(customer_id: str, request: Request) -> dict[str, object]:
     return success_response(_to_dict(desktop_service(request).get_customer(customer_id)), trace_id=request.state.trace_id)
+
+
+@router.patch("/{customer_id}", response_model=ApiResponse[CustomerData])
+def update_customer(customer_id: str, patch: CustomerPatchRequest, request: Request) -> dict[str, object]:
+    return success_response(
+        _to_dict(desktop_service(request).update_customer(customer_id, patch.model_dump(exclude_none=True))),
+        trace_id=request.state.trace_id,
+    )
 
 
 def _to_dict(value: Any) -> dict[str, Any]:

@@ -1,0 +1,32 @@
+{
+  "data": {
+    "answered_questions": 1,
+    "average_top_score": 0.93,
+    "items": [
+      {
+        "match_terms": [
+          "试用",
+          "政策"
+        ],
+        "query": "试用政策是什么？",
+        "retrieval_sources": [
+          "dense",
+          "keyword"
+        ],
+        "source": "policy.md",
+        "top_chunk_id": "chunk_001",
+        "top_score": 0.93,
+        "trust_status": "trusted",
+        "verdict": "hit"
+      }
+    ],
+    "markdown": "# Knowledge Retrieval Acceptance Report",
+    "missing_questions": 0,
+    "needs_review": false,
+    "total_questions": 1,
+    "trusted_result_count": 1
+  },
+  "error": null,
+  "success": true,
+  "trace_id": "fixture-knowledge-acceptance-report"
+}

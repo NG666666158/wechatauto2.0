@@ -21,3 +21,6 @@ wechat_ai/data/app/
 wechat_ai/data/logs/*.jsonl
 wechat_ai/data/memory/*.json
 wechat_ai/data/users/*.json
+wechat_ai/data/knowledge/browser_uploads/
+wechat_ai/data/knowledge/uploads/
+wechat_ai/data/self_identity/

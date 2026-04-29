@@ -30,7 +30,13 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn(("POST", "/api/v1/conversations/{conversation_id}/send"), endpoint_keys)
         self.assertIn(("GET", "/api/v1/knowledge/status"), endpoint_keys)
         self.assertIn(("PATCH", "/api/v1/settings"), endpoint_keys)
-        self.assertIn("/api/v1/conversations/{conversation_id}/send", contract["frontend_pages"]["messages"])
+        self.assertNotIn("/api/v1/conversations/{conversation_id}/send", contract["frontend_pages"]["messages"])
+        self.assertNotIn("/api/v1/conversations/{conversation_id}/suggest", contract["frontend_pages"]["messages"])
+        self.assertNotIn("/api/v1/settings/safety-policy/audit", contract["frontend_pages"]["settings"])
+        self.assertIn("/api/v1/settings/safety-policy/import", contract["frontend_pages"]["settings"])
+        self.assertNotIn("/api/v1/environment/wechat", contract["frontend_pages"]["settings"])
+        self.assertNotIn("/api/v1/controls/conversations/{conversation_id}", contract["frontend_pages"]["settings"])
+        self.assertNotIn("/api/v1/errors/catalog", contract["frontend_pages"]["settings"])
 
     def test_p4_first_batch_endpoints_use_typed_response_schemas(self) -> None:
         from wechat_ai.server import create_app
@@ -79,6 +85,7 @@ class ApiContractTests(unittest.TestCase):
             ("POST", "/api/v1/conversations/{conversation_id}/send"): "SendReplyResult",
             ("GET", "/api/v1/customers"): "Customer",
             ("GET", "/api/v1/customers/{customer_id}"): "Customer",
+            ("PATCH", "/api/v1/customers/{customer_id}"): "Customer",
             ("GET", "/api/v1/identity/drafts"): "IdentityDraft",
             ("GET", "/api/v1/identity/candidates"): "IdentityCandidate",
             ("GET", "/api/v1/identity/self/global"): "SelfIdentity",
@@ -87,6 +94,10 @@ class ApiContractTests(unittest.TestCase):
             ("GET", "/api/v1/knowledge/trust-diagnostics"): "KnowledgeTrustDiagnostics",
             ("POST", "/api/v1/knowledge/trusted-rebuild"): "KnowledgeTrustedRebuildResult",
             ("GET", "/api/v1/knowledge/search"): "KnowledgeSearchResult",
+            ("GET", "/api/v1/knowledge/tasks"): "KnowledgeTask",
+            ("POST", "/api/v1/knowledge/ai-normalize-preview"): "KnowledgeNormalizePreview",
+            ("POST", "/api/v1/knowledge/ai-normalize-confirm"): "KnowledgeNormalizeConfirmResult",
+            ("POST", "/api/v1/knowledge/acceptance-report"): "KnowledgeAcceptanceReport",
             ("POST", "/api/v1/knowledge/import"): "KnowledgeImportResult",
             ("POST", "/api/v1/knowledge/web-build"): "WebKnowledgeBuildResult",
             ("GET", "/api/v1/debug/knowledge-acceptance/history"): "KnowledgeAcceptanceHistoryRecord",
@@ -124,9 +135,13 @@ class ApiContractTests(unittest.TestCase):
             ("PATCH", "/api/v1/privacy/policy"): "PrivacyPolicyPatchRequest",
             ("PATCH", "/api/v1/controls/conversations/{conversation_id}"): "ConversationControlPatchRequest",
             ("PATCH", "/api/v1/identity/self/global"): "SelfIdentityPatchRequest",
+            ("PATCH", "/api/v1/customers/{customer_id}"): "CustomerPatchRequest",
             ("POST", "/api/v1/knowledge/import"): "KnowledgeImportRequest",
             ("POST", "/api/v1/knowledge/web-build"): "WebKnowledgeBuildRequest",
             ("POST", "/api/v1/knowledge/trusted-rebuild"): "KnowledgeTrustedRebuildRequest",
+            ("POST", "/api/v1/knowledge/ai-normalize-preview"): "KnowledgeNormalizePreviewRequest",
+            ("POST", "/api/v1/knowledge/ai-normalize-confirm"): "KnowledgeNormalizeConfirmRequest",
+            ("POST", "/api/v1/knowledge/acceptance-report"): "KnowledgeAcceptanceReportRequest",
             ("POST", "/api/v1/conversations/{conversation_id}/suggest"): "ReplySuggestionRequest",
             ("POST", "/api/v1/conversations/{conversation_id}/send"): "SendReplyRequest",
             ("POST", "/api/v1/settings/safety-policy/import"): "SafetyPolicyImportRequest",

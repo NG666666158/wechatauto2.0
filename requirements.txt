@@ -8,3 +8,6 @@ pillow>=10.4.0
 emoji>=2.14.1
 fastapi>=0.115.0
 uvicorn>=0.30.0
+python-multipart>=0.0.20
+python-docx>=1.1.2
+pypdf>=4.3.1

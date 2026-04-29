@@ -1,0 +1,23 @@
+{
+  "data": {
+    "file_name": "shi-yong-zheng-ce.md",
+    "file_path": "data/knowledge/ai_normalized/shi-yong-zheng-ce.md",
+    "import_result": {
+      "files": [
+        {
+          "file_name": "shi-yong-zheng-ce.md",
+          "status": "imported"
+        }
+      ],
+      "index_rebuilt": true
+    },
+    "metadata": {
+      "normalized": true,
+      "source": "policy.md",
+      "title": "试用政策"
+    }
+  },
+  "error": null,
+  "success": true,
+  "trace_id": "fixture-knowledge-ai-normalize-confirm"
+}

@@ -1,4 +1,4 @@
-from .knowledge_evidence import build_knowledge_evidence, build_knowledge_trust_metadata
+from .knowledge_evidence import build_compact_knowledge_evidence, build_knowledge_evidence, build_knowledge_trust_metadata
 from .message_flow import (
     UnreadMessageRecord,
     build_merged_message,
@@ -19,6 +19,7 @@ __all__ = [
     "SendCoordinator",
     "UiActionLock",
     "UnreadMessageRecord",
+    "build_compact_knowledge_evidence",
     "build_knowledge_evidence",
     "build_knowledge_trust_metadata",
     "build_merged_message",

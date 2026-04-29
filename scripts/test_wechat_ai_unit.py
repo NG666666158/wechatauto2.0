@@ -6,6 +6,7 @@ import sys
 import time
 import types
 import unittest
+from urllib.error import HTTPError
 from pathlib import Path
 from uuid import uuid4
 
@@ -108,6 +109,39 @@ class ReplyEngineTests(unittest.TestCase):
         self.assertEqual(payload["model"], "MiniMax-M2.5")
         self.assertEqual(payload["messages"][0]["role"], "system")
         self.assertEqual(payload["messages"][1]["content"], "hello")
+
+    def test_provider_retries_transient_http_529_before_fallback_can_trigger(self) -> None:
+        calls: list[str] = []
+
+        def fake_transport(url: str, headers: dict[str, str], payload: dict[str, object], timeout: int) -> dict[str, object]:
+            calls.append(url)
+            if len(calls) == 1:
+                raise HTTPError(url, 529, "Unknown Status Code", hdrs=None, fp=None)
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "retry-success"
+                        }
+                    }
+                ]
+            }
+
+        provider = MiniMaxProvider(
+            api_key="demo-key",
+            transport=fake_transport,
+            retry_attempts=1,
+            retry_backoff_seconds=0,
+        )
+
+        reply = provider.complete(
+            system_prompt="you are an assistant",
+            user_prompt="hello",
+            model="MiniMax-M2.5",
+        )
+
+        self.assertEqual(reply, "retry-success")
+        self.assertEqual(len(calls), 2)
 
     def test_reply_engine_uses_scene_specific_prompts_and_context(self) -> None:
         calls: list[dict[str, str]] = []

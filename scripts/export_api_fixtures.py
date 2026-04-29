@@ -34,11 +34,17 @@ def build_api_fixtures() -> dict[str, dict[str, object]]:
         ConversationListItemData,
         CustomerData,
         DashboardSummaryData,
+        DashboardActivityData,
         IdentityCandidateData,
         IdentityDraftData,
         KnowledgeAcceptanceHistoryRecordData,
+        KnowledgeAcceptanceReportData,
+        KnowledgeAcceptanceReportItemData,
         KnowledgeFileImportData,
         KnowledgeImportResultData,
+        KnowledgeNormalizeConfirmResultData,
+        KnowledgeNormalizePreviewData,
+        KnowledgeTaskData,
         KnowledgeSearchResultData,
         KnowledgeStatusData,
         KnowledgeTrustDiagnosticsData,
@@ -100,6 +106,15 @@ def build_api_fixtures() -> dict[str, dict[str, object]]:
             last_built_at="2026-04-24T22:15:00+08:00",
             embedding_provider="local",
             supported_extensions=[".pdf", ".docx", ".txt", ".md", ".png", ".jpg"],
+        ),
+        activity=DashboardActivityData(
+            today_received_messages=42,
+            today_replied_messages=31,
+            today_replied_conversations=18,
+            pending_total=12,
+            pending_reply_jobs=5,
+            pending_identity_items=3,
+            pending_send_uncertain=4,
         ),
     )
     conversations = [
@@ -316,6 +331,78 @@ def build_api_fixtures() -> dict[str, dict[str, object]]:
                 ).model_dump(mode="json"),
             ],
             trace_id="fixture-knowledge-search",
+        ),
+        "knowledge/knowledge.tasks.json": success_response(
+            [
+                KnowledgeTaskData(
+                    id="task_001",
+                    type="import",
+                    title="本地文件入库",
+                    status="completed",
+                    created_at="2026-04-29T10:00:00Z",
+                    updated_at="2026-04-29T10:01:00Z",
+                    summary="已入库 2 个文件，索引已重建",
+                    metadata={"file_count": 2, "index_rebuilt": True},
+                ).model_dump(mode="json"),
+                KnowledgeTaskData(
+                    id="task_002",
+                    type="ai_normalize",
+                    title="AI 入库预处理",
+                    status="needs_review",
+                    created_at="2026-04-29T10:02:00Z",
+                    updated_at="2026-04-29T10:03:00Z",
+                    summary="AI 预处理预览已生成，需复核提示",
+                    metadata={"faq_count": 3, "warnings": ["资料不足，需人工确认"]},
+                ).model_dump(mode="json"),
+            ],
+            trace_id="fixture-knowledge-tasks",
+        ),
+        "knowledge/knowledge.ai-normalize-preview.json": success_response(
+            KnowledgeNormalizePreviewData(
+                faq_items=[{"question": "如何试用？", "answer": "按资料登记后体验。", "confidence": "high"}],
+                allowed_claims=["支持先登记后体验"],
+                forbidden_claims=["不能承诺资料外结果"],
+                handoff_rules=["退款争议转人工"],
+                source_excerpt="试用政策：支持先登记后体验。",
+                warnings=[],
+            ).model_dump(mode="json"),
+            trace_id="fixture-knowledge-ai-normalize-preview",
+        ),
+        "knowledge/knowledge.ai-normalize-confirm.json": success_response(
+            KnowledgeNormalizeConfirmResultData(
+                file_path="data/knowledge/ai_normalized/shi-yong-zheng-ce.md",
+                file_name="shi-yong-zheng-ce.md",
+                metadata={"title": "试用政策", "source": "policy.md", "normalized": True},
+                import_result=KnowledgeImportResultData(
+                    files=[KnowledgeFileImportData(file_name="shi-yong-zheng-ce.md", status="imported")],
+                    index_rebuilt=True,
+                ),
+            ).model_dump(mode="json"),
+            trace_id="fixture-knowledge-ai-normalize-confirm",
+        ),
+        "knowledge/knowledge.acceptance-report.json": success_response(
+            KnowledgeAcceptanceReportData(
+                total_questions=1,
+                answered_questions=1,
+                missing_questions=0,
+                average_top_score=0.93,
+                trusted_result_count=1,
+                needs_review=False,
+                items=[
+                    KnowledgeAcceptanceReportItemData(
+                        query="试用政策是什么？",
+                        top_chunk_id="chunk_001",
+                        top_score=0.93,
+                        source="policy.md",
+                        retrieval_sources=["dense", "keyword"],
+                        match_terms=["试用", "政策"],
+                        trust_status="trusted",
+                        verdict="hit",
+                    )
+                ],
+                markdown="# Knowledge Retrieval Acceptance Report",
+            ).model_dump(mode="json"),
+            trace_id="fixture-knowledge-acceptance-report",
         ),
         "knowledge/knowledge.import.json": success_response(
             KnowledgeImportResultData(

@@ -57,7 +57,8 @@
 3. [docs/desktop-app-backend.md](./docs/desktop-app-backend.md)
 4. [PROJECT_PLAN.md](./PROJECT_PLAN.md)
 5. [docs/后续开发计划与收尾路线图.md](./docs/后续开发计划与收尾路线图.md)
-6. [REFACTOR_PLAN.md](./REFACTOR_PLAN.md)
+6. [docs/exe-packaging-roadmap.md](./docs/exe-packaging-roadmap.md)
+7. [REFACTOR_PLAN.md](./REFACTOR_PLAN.md)
 
 P8 验收相关文档：
 
@@ -82,6 +83,28 @@ P8 验收相关文档：
   主文档、架构说明、验收说明
 
 ## 快速开始
+
+### 本机网页一键启动
+
+开发和网页测试时，可以直接执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\start_local_web.ps1
+```
+
+默认会以前台可见窗口启动前后端，便于微信环境检测和查看实时日志。若只想后台静默启动：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\start_local_web.ps1 -Hidden
+```
+
+需要强制重启前后端时：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\start_local_web.ps1 -Restart
+```
+
+也可以双击 `scripts/start_local_web.bat`。这个入口只拉起本机前后端并验证 HTTP 可访问，不会启动真实微信自动回复运行时。
 
 ### 1. 安装依赖
 

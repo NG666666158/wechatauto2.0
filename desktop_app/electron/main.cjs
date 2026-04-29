@@ -1,7 +1,7 @@
 const path = require("node:path")
-const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage } = require("electron")
+const { app, BrowserWindow, dialog, ipcMain, Menu, Tray, nativeImage } = require("electron")
 
-const { ensureBackendSession } = require("./backend-controller.cjs")
+const { ensureBackendSession, probeBackend } = require("./backend-controller.cjs")
 const { createWindowCloseHandler, shutdownDesktopShell } = require("./lifecycle-controller.cjs")
 const { buildTrayTemplate, handleEscAction, loadShellState, runScheduleTick } = require("./shell-controller.cjs")
 const { loadShellPreferences, saveShellPreferences, syncLaunchAtLogin } = require("./shell-preferences.cjs")
@@ -11,6 +11,12 @@ const { attachWindowVisibilityGuards } = require("./window-visibility-controller
 
 const repoRoot = path.resolve(__dirname, "..", "..")
 const frontendUrl = process.env.WECHAT_AI_FRONTEND_URL || "http://127.0.0.1:3000"
+const KNOWLEDGE_FILE_FILTERS = [
+  { name: "Knowledge documents", extensions: ["txt", "md", "markdown", "docx", "pdf", "json", "csv", "html"] },
+  { name: "Text and Markdown", extensions: ["txt", "md", "markdown"] },
+  { name: "Office and PDF", extensions: ["docx", "pdf"] },
+  { name: "Structured text", extensions: ["json", "csv", "html"] },
+]
 
 const shellState = {
   backendSession: null,
@@ -149,15 +155,44 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle("shell-preferences:get", () => shellPreferencesBridge.getPreferences())
   ipcMain.handle("shell-preferences:update", (_event, patch) => shellPreferencesBridge.updatePreferences(patch))
-  shellState.backendSession = await ensureBackendSession({
-    repoRoot,
-    host: "127.0.0.1",
-    port: 8765,
-    startupTimeoutMs: 30000,
-    pollIntervalMs: 1000,
+  ipcMain.handle("knowledge:select-files", async () => {
+    const result = await dialog.showOpenDialog(shellState.mainWindow || undefined, {
+      title: "Select knowledge files",
+      properties: ["openFile", "multiSelections"],
+      filters: KNOWLEDGE_FILE_FILTERS,
+    })
+    if (result.canceled) {
+      return []
+    }
+    return result.filePaths
+  })
+  ipcMain.handle("backend:ensure", async () => {
+    if (
+      shellState.backendSession &&
+      shellState.backendSession.baseUrl &&
+      (await probeBackend(shellState.backendSession.baseUrl))
+    ) {
+      return {
+        baseUrl: shellState.backendSession.baseUrl,
+        managed: Boolean(shellState.backendSession.managed),
+        reused: true,
+      }
+    }
+    shellState.backendSession = await ensureBackendSession({
+      repoRoot,
+      host: "127.0.0.1",
+      port: 8765,
+      startupTimeoutMs: 30000,
+      pollIntervalMs: 1000,
+    })
+    await syncShellPreferences()
+    return {
+      baseUrl: shellState.backendSession.baseUrl,
+      managed: Boolean(shellState.backendSession.managed),
+      reused: Boolean(shellState.backendSession.reused),
+    }
   })
   shellState.mainWindow = createMainWindow()
-  await syncShellPreferences()
 })
 
 app.on("activate", () => {

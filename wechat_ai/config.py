@@ -15,7 +15,7 @@ from .profile.defaults import (
     default_user_profile_dir,
 )
 
-SUPPORTED_EMBEDDING_PROVIDERS = frozenset({"fake", "trusted_local"})
+SUPPORTED_EMBEDDING_PROVIDERS = frozenset({"fake", "trusted_local", "openai_compatible"})
 
 
 @dataclass(slots=True)
@@ -102,6 +102,11 @@ class ReplySettings:
 @dataclass(slots=True, frozen=True)
 class EmbeddingSettings:
     provider: str = "fake"
+    base_url: str = "https://api.openai.com/v1"
+    api_key: str = ""
+    model: str = "text-embedding-3-small"
+    timeout: float = 30.0
+    dimensions: int | None = None
 
     @classmethod
     def from_env(cls) -> "EmbeddingSettings":
@@ -109,4 +114,29 @@ class EmbeddingSettings:
         if provider not in SUPPORTED_EMBEDDING_PROVIDERS:
             supported = ", ".join(sorted(SUPPORTED_EMBEDDING_PROVIDERS))
             raise ValueError(f"Unsupported WECHATAUTO_EMBEDDING_PROVIDER '{provider}'. Supported providers: {supported}")
-        return cls(provider=provider)
+
+        base_url = os.getenv("WECHATAUTO_EMBEDDING_BASE_URL", "https://api.openai.com/v1").strip()
+        api_key = os.getenv("WECHATAUTO_EMBEDDING_API_KEY", "").strip()
+        model = os.getenv("WECHATAUTO_EMBEDDING_MODEL", "text-embedding-3-small").strip() or "text-embedding-3-small"
+        timeout = float(os.getenv("WECHATAUTO_EMBEDDING_TIMEOUT", "30"))
+        raw_dimensions = os.getenv("WECHATAUTO_EMBEDDING_DIMENSIONS", "").strip()
+        dimensions = int(raw_dimensions) if raw_dimensions else None
+
+        if dimensions is not None and dimensions <= 0:
+            raise ValueError("WECHATAUTO_EMBEDDING_DIMENSIONS must be positive")
+        if timeout <= 0:
+            raise ValueError("WECHATAUTO_EMBEDDING_TIMEOUT must be positive")
+        if provider == "openai_compatible":
+            if not api_key:
+                raise ValueError("WECHATAUTO_EMBEDDING_API_KEY is required for openai_compatible embeddings")
+            if not base_url:
+                raise ValueError("WECHATAUTO_EMBEDDING_BASE_URL is required for openai_compatible embeddings")
+
+        return cls(
+            provider=provider,
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+            timeout=timeout,
+            dimensions=dimensions,
+        )

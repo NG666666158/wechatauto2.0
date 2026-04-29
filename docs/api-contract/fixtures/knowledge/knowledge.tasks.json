@@ -1,0 +1,39 @@
+{
+  "data": [
+    {
+      "created_at": "2026-04-29T10:00:00Z",
+      "error": "",
+      "id": "task_001",
+      "metadata": {
+        "file_count": 2,
+        "index_rebuilt": true
+      },
+      "stage": "queued",
+      "status": "completed",
+      "summary": "已入库 2 个文件，索引已重建",
+      "title": "本地文件入库",
+      "type": "import",
+      "updated_at": "2026-04-29T10:01:00Z"
+    },
+    {
+      "created_at": "2026-04-29T10:02:00Z",
+      "error": "",
+      "id": "task_002",
+      "metadata": {
+        "faq_count": 3,
+        "warnings": [
+          "资料不足，需人工确认"
+        ]
+      },
+      "stage": "queued",
+      "status": "needs_review",
+      "summary": "AI 预处理预览已生成，需复核提示",
+      "title": "AI 入库预处理",
+      "type": "ai_normalize",
+      "updated_at": "2026-04-29T10:03:00Z"
+    }
+  ],
+  "error": null,
+  "success": true,
+  "trace_id": "fixture-knowledge-tasks"
+}

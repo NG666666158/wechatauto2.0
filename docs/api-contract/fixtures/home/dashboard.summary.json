@@ -1,5 +1,14 @@
 {
   "data": {
+    "activity": {
+      "pending_identity_items": 3,
+      "pending_reply_jobs": 5,
+      "pending_send_uncertain": 4,
+      "pending_total": 12,
+      "today_received_messages": 42,
+      "today_replied_conversations": 18,
+      "today_replied_messages": 31
+    },
     "app": {
       "auto_reply_enabled": true,
       "daemon_state": "running",

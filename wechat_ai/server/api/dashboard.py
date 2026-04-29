@@ -24,6 +24,7 @@ def dashboard_summary(request: Request) -> dict[str, object]:
                 "identity_drafts": len(service.list_identity_drafts()),
                 "identity_candidates": len(service.list_identity_candidates()),
             },
+            "activity": service.get_dashboard_activity_metrics(),
             "send_uncertain": service.get_send_uncertain_metrics(),
         },
         trace_id=request.state.trace_id,

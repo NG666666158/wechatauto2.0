@@ -51,6 +51,7 @@ from .runtime import (
     should_flush_active_pending,
     evaluate_send_coordinator_precheck,
 )
+from .self_identity import SelfIdentityResolver, SelfIdentityStore
 from .safety import SafetyPolicyEngine
 from .storage import RuntimeStateStore
 
@@ -255,6 +256,7 @@ def _build_reply_pipeline(provider, minimax: MiniMaxSettings, reply: ReplySettin
         "retriever": _build_retriever(),
         "memory_store": _build_memory_store(),
         "event_logger": _build_event_logger(),
+        "self_identity_resolver": SelfIdentityResolver(SelfIdentityStore(base_dir=paths.SELF_IDENTITY_DIR)),
         "prompt_preview_max_chars": getattr(reply, "prompt_preview_max_chars", 400),
     }
     signature = inspect.signature(ReplyPipeline)

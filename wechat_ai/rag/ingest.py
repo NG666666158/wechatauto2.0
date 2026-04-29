@@ -56,6 +56,7 @@ def build_knowledge_index(
     index_path: Path,
     chunk_size: int,
     overlap: int,
+    chunk_strategy: str = "recursive",
     source_paths: Iterable[Path] | None = None,
     embeddings: BaseEmbeddings | None = None,
 ) -> dict[str, object]:
@@ -66,7 +67,7 @@ def build_knowledge_index(
     resolved_index_path.parent.mkdir(parents=True, exist_ok=True)
 
     documents = load_knowledge_documents(root_dir=resolved_knowledge_dir, source_paths=source_paths)
-    chunker = Chunker(chunk_size=chunk_size, overlap=overlap)
+    chunker = Chunker(chunk_size=chunk_size, overlap=overlap, strategy=chunk_strategy)
 
     chunks: list[dict[str, object]] = []
     for document in documents:
@@ -81,6 +82,7 @@ def build_knowledge_index(
         "knowledge_dir": str(resolved_knowledge_dir),
         "embedding_provider": provider_info.provider,
         "embedding_trusted": provider_info.trusted,
+        "chunk_strategy": chunker.strategy,
         "chunk_size": chunk_size,
         "overlap": overlap,
         "documents_loaded": len(documents),
@@ -93,6 +95,7 @@ def build_knowledge_index(
                     "title": chunk["title"],
                     "source": chunk["source"],
                     "chunk_index": str(chunk["chunk_index"]),
+                    "chunk_strategy": chunker.strategy,
                 },
                 "vector": vector,
             }

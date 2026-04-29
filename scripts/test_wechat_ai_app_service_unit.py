@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import sys
 import uuid
@@ -45,6 +46,25 @@ class FakeIdentityAdmin:
 
     def list_candidates(self, *, base_dir: Path | None = None) -> list[dict[str, object]]:
         return list(self.candidates)
+
+
+class FakeSelfIdentityGenerator:
+    def __init__(self, response: str | None = None) -> None:
+        self.response = response or json.dumps(
+            {
+                "identity_facts": [
+                    "我是聊天客服。",
+                    "我会根据知识库回答用户问题。",
+                    "涉及价格和承诺必须先核实。",
+                ]
+            },
+            ensure_ascii=False,
+        )
+        self.calls: list[dict[str, object]] = []
+
+    def complete(self, system_prompt: str, user_prompt: str, model: str | None = None) -> str:
+        self.calls.append({"system_prompt": system_prompt, "user_prompt": user_prompt, "model": model})
+        return self.response
 
 
 class FakeDaemonRunner:
@@ -277,6 +297,63 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_dashboard_activity_metrics_counts_today_messages_and_pending_items(self) -> None:
+        from datetime import datetime, timezone
+
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_dashboard_activity")
+        try:
+            service = DesktopAppService(data_root=temp_dir, identity_admin_module=FakeIdentityAdmin())
+            service.record_conversation_message(
+                "friend:alice",
+                sender="alice",
+                text="hello",
+                direction="incoming",
+                sent_at="2026-04-29T01:00:00Z",
+            )
+            service.record_conversation_message(
+                "friend:alice",
+                sender="assistant",
+                text="hi",
+                direction="outgoing",
+                sent_at="2026-04-29T01:01:00Z",
+            )
+            service.record_conversation_message(
+                "friend:bob",
+                sender="assistant",
+                text="old",
+                direction="outgoing",
+                sent_at="2026-04-28T01:01:00Z",
+            )
+            service.runtime_state_store.create_reply_job(
+                conversation_id="friend:alice",
+                trigger_event_ids=["event_001"],
+                input_text="needs review",
+                draft_reply="draft",
+                risk_level="HIGH",
+                status="PENDING_REVIEW",
+            )
+            service.runtime_state_store.create_send_job(
+                reply_job_id="reply_001",
+                conversation_id="friend:alice",
+                target_title="Alice",
+                content="sent?",
+                status="SEND_UNCERTAIN",
+            )
+
+            metrics = service.get_dashboard_activity_metrics(now=datetime(2026, 4, 29, 12, 0, tzinfo=timezone.utc))
+
+            self.assertEqual(metrics["today_received_messages"], 1)
+            self.assertEqual(metrics["today_replied_messages"], 1)
+            self.assertEqual(metrics["today_replied_conversations"], 1)
+            self.assertEqual(metrics["pending_reply_jobs"], 1)
+            self.assertEqual(metrics["pending_identity_items"], 2)
+            self.assertEqual(metrics["pending_send_uncertain"], 1)
+            self.assertEqual(metrics["pending_total"], 4)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_settings_round_trip(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 
@@ -286,6 +363,36 @@ class DesktopAppServiceTests(TestCase):
             updated = service.update_settings({"reply_style": "专业友好"})
             self.assertEqual(updated.reply_style, "专业友好")
             self.assertEqual(service.get_settings().reply_style, "专业友好")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_embedding_config_settings_hide_raw_api_key_and_preserve_empty_patch(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_embedding_settings")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+            updated = service.update_settings(
+                {
+                    "embedding_config": {
+                        "provider": "openai_compatible",
+                        "base_url": "https://embedding.example/v1",
+                        "model": "text-embedding-test",
+                        "dimensions": 1024,
+                        "timeout": 20,
+                        "api_key": "dummy-test-123456",
+                    }
+                }
+            )
+            self.assertEqual(updated.embedding_config.provider, "openai_compatible")
+            self.assertTrue(updated.embedding_config.api_key_set)
+            self.assertNotIn("123456", str(updated.embedding_config.to_dict().get("api_key_preview", "")))
+
+            preserved = service.update_settings({"embedding_config": {"api_key": "", "model": "text-embedding-next"}})
+            env = preserved.embedding_config.to_env_overrides()
+
+            self.assertEqual(preserved.embedding_config.model, "text-embedding-next")
+            self.assertEqual(env["WECHATAUTO_EMBEDDING_API_KEY"], "dummy-test-123456")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -334,6 +441,69 @@ class DesktopAppServiceTests(TestCase):
                     if rule.reason_code == "HIGH_RISK_INTENT"
                 ).enabled
             )
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_safety_policy_custom_patterns_persist_and_affect_suggest(self) -> None:
+        from dataclasses import asdict, replace
+
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_safety_policy_custom_patterns")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+            current = service.get_settings().safety_policy
+            current.input_rules = [
+                replace(rule, patterns=[*rule.patterns, "round21-custom-risk"])
+                if rule.reason_code == "HIGH_RISK_INTENT"
+                else rule
+                for rule in current.input_rules
+            ]
+
+            updated = service.update_settings(
+                {"safety_policy": asdict(current)},
+                operator="alice",
+                source="settings-page",
+            )
+            blocked = service.suggest_reply("friend:alice", "please handle round21-custom-risk today")
+            allowed = service.suggest_reply("friend:bob", "hello, I only have a normal product question")
+            records = service.list_safety_policy_audit(limit=5)
+
+            persisted_rule = next(
+                rule for rule in service.get_settings().safety_policy.input_rules if rule.reason_code == "HIGH_RISK_INTENT"
+            )
+            self.assertIn("round21-custom-risk", persisted_rule.patterns)
+            self.assertIn(
+                "round21-custom-risk",
+                next(rule for rule in updated.safety_policy.input_rules if rule.reason_code == "HIGH_RISK_INTENT").patterns,
+            )
+            self.assertEqual(blocked.status, "pending_review")
+            self.assertNotEqual(allowed.status, "pending_review")
+            self.assertIn(records[0]["action"], {"policy_updated", "rule_groups_updated"})
+            self.assertEqual(records[0]["operator"], "alice")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_safety_policy_explicit_empty_patterns_are_preserved(self) -> None:
+        from dataclasses import asdict, replace
+
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_safety_policy_empty_patterns")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+            current = service.get_settings().safety_policy
+            current.input_rules = [
+                replace(rule, patterns=[]) if rule.reason_code == "HIGH_RISK_INTENT" else rule
+                for rule in current.input_rules
+            ]
+
+            service.update_settings({"safety_policy": asdict(current)})
+            reloaded_rule = next(
+                rule for rule in service.get_settings().safety_policy.input_rules if rule.reason_code == "HIGH_RISK_INTENT"
+            )
+
+            self.assertEqual(reloaded_rule.patterns, [])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -561,6 +731,99 @@ class DesktopAppServiceTests(TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_pending_review_reply_job_includes_compact_knowledge_evidence(self) -> None:
+        from dataclasses import asdict, replace
+
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_reply_job_knowledge_evidence")
+        try:
+            source = temp_dir / "trial_policy.txt"
+            source.write_text(
+                "Round 23 trial policy. Refund requests are accepted within seven days after activation.",
+                encoding="utf-8",
+            )
+            service = DesktopAppService(data_root=temp_dir, reply_pipeline=FakeReplyPipeline())
+            service.import_knowledge_files([source])
+            current = service.get_settings().safety_policy
+            current.input_rules = [
+                replace(rule, patterns=[*rule.patterns, "round23-review"])
+                if rule.reason_code == "HIGH_RISK_INTENT"
+                else rule
+                for rule in current.input_rules
+            ]
+            service.update_settings({"safety_policy": asdict(current)})
+
+            suggestion = service.suggest_reply("friend:alice", "round23-review trial policy refund")
+            jobs = service.runtime_state_store.list_reply_jobs(status="PENDING_REVIEW")
+
+            self.assertEqual(suggestion.status, "pending_review")
+            self.assertEqual(len(jobs), 1)
+            metadata = jobs[0].get("metadata", {})
+            self.assertIsInstance(metadata, dict)
+            evidence = metadata.get("knowledge_evidence", [])
+            self.assertEqual(len(evidence), 1)
+            self.assertLessEqual(len(evidence[0]["text"]), 240)
+            self.assertEqual(evidence[0]["doc_id"], "trial_policy")
+            self.assertIn("trial_policy", evidence[0]["source"])
+            self.assertEqual(evidence[0]["chunk_index"], "0")
+            self.assertIn(evidence[0]["knowledge_trust_status"], {"fake", "trusted", "untrusted", "unknown"})
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_reply_job_schema_accepts_knowledge_evidence_metadata(self) -> None:
+        from wechat_ai.server.schemas.desktop import ReplyJobData
+
+        payload = ReplyJobData(
+            reply_job_id="reply_1",
+            conversation_id="friend:alice",
+            input_text="round23-review trial policy refund",
+            status="PENDING_REVIEW",
+            metadata={
+                "knowledge_evidence": [
+                    {
+                        "doc_id": "trial_policy.txt",
+                        "source": "trial_policy.txt",
+                        "chunk_index": "0",
+                        "text": "Refund requests are accepted within seven days.",
+                        "score": 0.91,
+                        "knowledge_trust_status": "trusted",
+                        "knowledge_trust_reason": "",
+                    }
+                ]
+            },
+        )
+
+        evidence = payload.metadata["knowledge_evidence"][0]
+        self.assertEqual(evidence["doc_id"], "trial_policy.txt")
+        self.assertEqual(evidence["knowledge_trust_status"], "trusted")
+
+    def test_pending_review_reply_job_without_knowledge_keeps_empty_metadata(self) -> None:
+        from dataclasses import asdict, replace
+
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_reply_job_without_knowledge")
+        try:
+            service = DesktopAppService(data_root=temp_dir, reply_pipeline=FakeReplyPipeline())
+            current = service.get_settings().safety_policy
+            current.input_rules = [
+                replace(rule, patterns=[*rule.patterns, "round23-no-knowledge-review"])
+                if rule.reason_code == "HIGH_RISK_INTENT"
+                else rule
+                for rule in current.input_rules
+            ]
+            service.update_settings({"safety_policy": asdict(current)})
+
+            suggestion = service.suggest_reply("friend:alice", "round23-no-knowledge-review")
+            jobs = service.runtime_state_store.list_reply_jobs(status="PENDING_REVIEW")
+
+            self.assertEqual(suggestion.status, "pending_review")
+            self.assertEqual(len(jobs), 1)
+            self.assertEqual(jobs[0].get("metadata"), {})
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_local_conversation_creates_draft_customer_profile_entry(self) -> None:
         from wechat_ai.app.service import DesktopAppService
 
@@ -572,6 +835,10 @@ class DesktopAppServiceTests(TestCase):
 
             customers = service.list_customers()
             customer = service.get_customer("friend:alice")
+            updated = service.update_customer(
+                "friend:alice",
+                {"display_name": "Alice A", "tags": ["重要客户"], "remark": "关注试用", "status": "follow_up"},
+            )
             detail = service.get_conversation("friend:alice")
 
             draft = next(item for item in customers if item.customer_id == "friend:alice")
@@ -580,7 +847,85 @@ class DesktopAppServiceTests(TestCase):
             self.assertTrue(draft.tags)
             self.assertEqual(customer["customer_id"], "friend:alice")
             self.assertEqual(customer["display_name"], "Alice")
+            self.assertEqual(updated["display_name"], "Alice A")
+            self.assertEqual(updated["tags"], ["重要客户"])
+            self.assertEqual(service.get_customer("friend:alice")["remark"], "关注试用")
             self.assertEqual([message["direction"] for message in detail["messages"]], ["incoming", "outgoing"])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_customer_update_syncs_user_profile_for_reply_prompt(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+        from wechat_ai.profile.profile_store import ProfileStore
+
+        temp_dir = _fresh_dir(".tmp_app_service_customer_profile_sync")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+            service.record_conversation_message("friend:bob", sender="Bob", text="hello", direction="incoming")
+            service.update_customer(
+                "friend:bob",
+                {
+                    "display_name": "Teacher Bob",
+                    "tags": ["teacher"],
+                    "remark": "Reply respectfully and do not joke.",
+                    "status": "confirmed",
+                },
+            )
+
+            profile = ProfileStore(base_dir=temp_dir).load_user_profile("friend:bob")
+            display_name_profile = ProfileStore(base_dir=temp_dir).load_user_profile("Teacher Bob")
+
+            self.assertEqual(profile.display_name, "Teacher Bob")
+            self.assertEqual(profile.tags, ["teacher"])
+            self.assertEqual(profile.notes, ["Reply respectfully and do not joke."])
+            self.assertEqual(profile.preferences["客户状态"], "confirmed")
+            self.assertEqual(profile.preferences["客户备注"], "Reply respectfully and do not joke.")
+            self.assertEqual(display_name_profile.notes, ["Reply respectfully and do not joke."])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_existing_customer_overrides_sync_to_user_profiles_on_startup(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+        from wechat_ai.profile.profile_store import ProfileStore
+
+        temp_dir = _fresh_dir(".tmp_app_service_customer_profile_startup_sync")
+        try:
+            app_dir = temp_dir / "app"
+            app_dir.mkdir(parents=True, exist_ok=True)
+            (app_dir / "conversations.json").write_text(
+                json.dumps(
+                    {
+                        "friend:bob": {
+                            "title": "Bob",
+                            "messages": [{"text": "hello", "sent_at": "2026-04-29T00:00:00Z"}],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (app_dir / "customer_overrides.json").write_text(
+                json.dumps(
+                    {
+                        "friend:bob": {
+                            "display_name": "Teacher Bob",
+                            "tags": ["teacher"],
+                            "remark": "Reply formally.",
+                            "status": "confirmed",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            DesktopAppService(data_root=temp_dir)
+            profile = ProfileStore(base_dir=temp_dir).load_user_profile("friend:bob")
+            display_name_profile = ProfileStore(base_dir=temp_dir).load_user_profile("Teacher Bob")
+
+            self.assertEqual(profile.display_name, "Teacher Bob")
+            self.assertEqual(profile.tags, ["teacher"])
+            self.assertEqual(profile.notes, ["Reply formally."])
+            self.assertEqual(profile.preferences["客户状态"], "confirmed")
+            self.assertEqual(display_name_profile.notes, ["Reply formally."])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -1059,6 +1404,25 @@ class DesktopAppServiceTests(TestCase):
             self.assertEqual(override["user_id"], "user_001")
             self.assertEqual(preview["relationship"], "teacher")
             self.assertIn("我是 3 班班长", preview["identity_facts"])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_generate_global_self_identity_uses_model_response_without_saving(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_self_identity_generate")
+        try:
+            generator = FakeSelfIdentityGenerator()
+            service = DesktopAppService(data_root=temp_dir, self_identity_generator=generator)
+
+            generated = service.generate_global_self_identity("聊天客服")
+            stored = service.get_global_self_identity()
+
+            self.assertEqual(generated["display_name"], "聊天客服")
+            self.assertIn("我是聊天客服。", generated["identity_facts"])
+            self.assertIn("聊天客服", str(generator.calls[0]["user_prompt"]))
+            self.assertNotEqual(stored["display_name"], "聊天客服")
+            self.assertEqual(stored["identity_facts"], [])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -1637,6 +2001,109 @@ class DesktopAppServiceTests(TestCase):
             self.assertEqual(payload["seed_documents"], 1)
             self.assertEqual(payload["search_limit"], 3)
             self.assertEqual(fake_builder.calls[0]["imported_count"], 2)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_knowledge_import_records_recent_task(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_knowledge_tasks")
+        try:
+            source = temp_dir / "faq.txt"
+            source.write_text("试用政策：支持先登记后体验。", encoding="utf-8")
+            service = DesktopAppService(data_root=temp_dir)
+
+            result = service.import_knowledge_files([source])
+            tasks = service.list_knowledge_tasks(limit=5)
+
+            self.assertTrue(result["index_rebuilt"])
+            self.assertEqual(tasks[0]["type"], "import")
+            self.assertEqual(tasks[0]["status"], "completed")
+            self.assertIn("imported_count", tasks[0]["metadata"])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_ai_knowledge_normalize_preview_records_task_without_writing_index(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+        from wechat_ai.rag.ai_normalizer import AINormalizer
+
+        temp_dir = _fresh_dir(".tmp_app_service_ai_normalize")
+        try:
+            normalizer = AINormalizer(
+                generator=lambda prompt: json.dumps(
+                    {
+                        "faq_items": [{"question": "如何试用？", "answer": "按资料登记后体验。", "confidence": "high"}],
+                        "allowed_claims": ["支持先登记后体验"],
+                        "forbidden_claims": ["不能承诺一定退款"],
+                        "handoff_rules": ["退款争议转人工"],
+                        "source_excerpt": "试用政策：支持先登记后体验。",
+                        "warnings": [],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            service = DesktopAppService(data_root=temp_dir, knowledge_ai_normalizer=normalizer)
+
+            preview = service.build_ai_knowledge_normalize_preview(
+                text="试用政策：支持先登记后体验。",
+                title="试用政策",
+                source="faq.txt",
+            )
+            tasks = service.list_knowledge_tasks(limit=5)
+
+            self.assertEqual(preview["faq_items"][0]["question"], "如何试用？")
+            self.assertFalse((temp_dir / "knowledge" / "local_knowledge_index.json").exists())
+            self.assertEqual(tasks[0]["type"], "ai_normalize")
+            self.assertEqual(tasks[0]["status"], "completed")
+            self.assertEqual(tasks[0]["metadata"]["faq_count"], 1)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_ai_knowledge_normalize_confirm_writes_markdown_and_rebuilds_index(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_ai_normalize_confirm")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+
+            result = service.confirm_ai_knowledge_normalize_preview(
+                title="试用政策",
+                source="policy.md",
+                preview={
+                    "faq_items": [{"question": "如何试用？", "answer": "登记后体验。", "confidence": "high"}],
+                    "allowed_claims": ["支持登记体验"],
+                    "forbidden_claims": ["不能承诺退款"],
+                    "handoff_rules": ["退款争议转人工"],
+                    "source_excerpt": "试用政策",
+                    "warnings": [],
+                },
+            )
+            tasks = service.list_knowledge_tasks(limit=5)
+
+            self.assertTrue(Path(str(result["file_path"])).exists())
+            self.assertTrue(result["import_result"]["index_rebuilt"])
+            self.assertEqual(tasks[0]["type"], "ai_normalize_confirm")
+            self.assertEqual(tasks[0]["stage"], "completed")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_knowledge_acceptance_report_searches_questions_and_records_task(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_acceptance_report")
+        try:
+            source = temp_dir / "policy.txt"
+            source.write_text("试用政策：支持先登记后体验。", encoding="utf-8")
+            service = DesktopAppService(data_root=temp_dir)
+            service.import_knowledge_files([source])
+
+            report = service.build_knowledge_acceptance_report(["试用政策是什么？"], limit=3)
+            tasks = service.list_knowledge_tasks(limit=5)
+
+            self.assertEqual(report["total_questions"], 1)
+            self.assertEqual(len(report["items"]), 1)
+            self.assertIn("markdown", report)
+            self.assertEqual(tasks[0]["type"], "acceptance_report")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

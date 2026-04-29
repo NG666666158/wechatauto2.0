@@ -221,6 +221,28 @@ class LocalIndexRetrieverTests(unittest.TestCase):
         self.assertFalse(summary["embedding_trusted"])
         self.assertEqual(payload["embedding_provider"], "FakeEmbeddings")
         self.assertFalse(payload["embedding_trusted"])
+        self.assertEqual(payload["chunk_strategy"], "recursive")
+        self.assertEqual(payload["chunks"][0]["metadata"]["chunk_strategy"], "recursive")
+
+    def test_build_knowledge_index_records_selected_chunk_strategy(self) -> None:
+        temp_dir = self._make_temp_dir()
+        knowledge_dir = temp_dir / "semantic_overlap"
+        knowledge_dir.mkdir(exist_ok=True)
+        (knowledge_dir / "faq.md").write_text("第一条规则。第二条规则。第三条规则。第四条规则。", encoding="utf-8")
+        index_path = temp_dir / "semantic_overlap_index.json"
+
+        build_knowledge_index(
+            knowledge_dir=knowledge_dir,
+            index_path=index_path,
+            chunk_size=16,
+            overlap=5,
+            chunk_strategy="semantic_overlap",
+        )
+
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["chunk_strategy"], "semantic_overlap")
+        self.assertEqual(payload["chunks"][1]["text"], "二条规则。第三条规则。第四条规则。")
+        self.assertEqual(payload["chunks"][1]["metadata"]["chunk_strategy"], "semantic_overlap")
 
     def test_build_knowledge_index_keeps_fake_embeddings_untrusted(self) -> None:
         temp_dir = self._make_temp_dir()

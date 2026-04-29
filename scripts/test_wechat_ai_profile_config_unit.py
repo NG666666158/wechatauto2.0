@@ -99,6 +99,36 @@ class ProfileConfigTests(unittest.TestCase):
 
         self.assertEqual(settings.provider, "trusted_local")
 
+    def test_embedding_settings_support_openai_compatible_provider(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "WECHATAUTO_EMBEDDING_PROVIDER": " openai_compatible ",
+                "WECHATAUTO_EMBEDDING_BASE_URL": "https://example.test/v1/",
+                "WECHATAUTO_EMBEDDING_API_KEY": "dummy-test-key",
+                "WECHATAUTO_EMBEDDING_MODEL": "embedding-model",
+                "WECHATAUTO_EMBEDDING_TIMEOUT": "12",
+                "WECHATAUTO_EMBEDDING_DIMENSIONS": "1536",
+            },
+            clear=True,
+        ):
+            config = self.load_config()
+            settings = config.EmbeddingSettings.from_env()
+
+        self.assertEqual(settings.provider, "openai_compatible")
+        self.assertEqual(settings.base_url, "https://example.test/v1/")
+        self.assertEqual(settings.api_key, "dummy-test-key")
+        self.assertEqual(settings.model, "embedding-model")
+        self.assertEqual(settings.timeout, 12.0)
+        self.assertEqual(settings.dimensions, 1536)
+
+    def test_embedding_settings_require_api_key_for_openai_compatible_provider(self) -> None:
+        with patch.dict(os.environ, {"WECHATAUTO_EMBEDDING_PROVIDER": "openai_compatible"}, clear=True):
+            config = self.load_config()
+
+            with self.assertRaises(ValueError):
+                config.EmbeddingSettings.from_env()
+
     def test_embedding_settings_reject_unknown_provider(self) -> None:
         with patch.dict(os.environ, {"WECHATAUTO_EMBEDDING_PROVIDER": "cloud"}, clear=True):
             config = self.load_config()

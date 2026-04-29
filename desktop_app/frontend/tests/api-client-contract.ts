@@ -11,18 +11,20 @@ import type {
   IdentityCandidate,
   IdentityDraft,
   KnowledgeAcceptanceHistoryRecord,
+  KnowledgeAcceptanceReport,
+  KnowledgeNormalizePreview,
+  KnowledgeNormalizeConfirmResult,
+  KnowledgeTask,
   KnowledgeTrustDiagnostics,
   KnowledgeTrustedRebuildResult,
   KnowledgeImportResult,
   KnowledgeSearchResult,
   PrivacyPolicy,
   ReplyJob,
-  ReplySuggestion,
   RuntimeAction,
   RuntimeStatus,
   SendJob,
   SendAttempt,
-  SendReplyResult,
   SelfIdentity,
   SelfIdentityPatch,
   Settings,
@@ -30,7 +32,6 @@ import type {
   WebKnowledgeBuildResult,
   WechatEnvironment,
   RecentLogEvent,
-  SafetyPolicyAuditRecord,
   SafetyPolicyConfig,
   SafetyPolicyImportBody,
 } from "@/lib/api"
@@ -48,8 +49,11 @@ async function assertApiClientContract() {
   const stopped: ApiResponse<RuntimeAction> = await apiClient.stopRuntime()
   const restarted: ApiResponse<RuntimeAction> = await apiClient.restartRuntime()
   const settings: ApiResponse<Settings> = await apiClient.getSettings()
-  const updatedSettings: ApiResponse<Settings> = await apiClient.updateSettings({ auto_reply_enabled: false })
-  const safetyPolicyAudit: ApiResponse<SafetyPolicyAuditRecord[]> = await apiClient.getSafetyPolicyAudit(5)
+  const embeddingProviderSetting: string | undefined = settings.data?.embedding_config.provider
+  const updatedSettings: ApiResponse<Settings> = await apiClient.updateSettings({
+    auto_reply_enabled: false,
+    embedding_config: { provider: "fake", api_key: "" },
+  })
   const exportedSafetyPolicy: ApiResponse<SafetyPolicyConfig> = await apiClient.exportSafetyPolicy()
   const safetyPolicyImportBody: SafetyPolicyImportBody = {
     safety_policy: { rule_groups: { business_risk: false } },
@@ -108,13 +112,17 @@ async function assertApiClientContract() {
     reviewed_by: "operator",
     unpause_conversation: true,
   })
-  const suggestion: ApiResponse<ReplySuggestion> = await apiClient.suggestReply("friend:zhang", "请介绍一下试用政策")
-  const sent: ApiResponse<SendReplyResult> = await apiClient.sendConversationReply("friend:zhang", "您好，稍后为您介绍。")
   const updatedControl: ApiResponse<ConversationControl> = await apiClient.updateConversationControl("friend:zhang", {
     human_takeover: true,
   })
   const customers: ApiResponse<Customer[]> = await apiClient.listCustomers()
   const customer: ApiResponse<Customer> = await apiClient.getCustomer("user_001")
+  const updatedCustomer: ApiResponse<Customer> = await apiClient.updateCustomer("user_001", {
+    display_name: "张先生",
+    tags: ["意向客户"],
+    remark: "关注试用",
+    status: "follow_up",
+  })
   const identityDrafts: ApiResponse<IdentityDraft[]> = await apiClient.listIdentityDrafts()
   const identityCandidates: ApiResponse<IdentityCandidate[]> = await apiClient.listIdentityCandidates()
   const selfIdentity: ApiResponse<SelfIdentity> = await apiClient.getGlobalSelfIdentity()
@@ -178,6 +186,34 @@ async function assertApiClientContract() {
   const knowledgeKeywordScore: number | null | undefined = knowledgeSearch.data?.[0]?.keyword_score
   const knowledgeMatchTerms: string[] | undefined = knowledgeSearch.data?.[0]?.match_terms
   const knowledgeTrustStatus: "trusted" | "fake" | "untrusted" | "unknown" | undefined = knowledgeSearch.data?.[0]?.embedding_trust_status
+  const knowledgeTasks: ApiResponse<KnowledgeTask[]> = await apiClient.listKnowledgeTasks(5)
+  const knowledgeNormalizePreview: ApiResponse<KnowledgeNormalizePreview> = await apiClient.buildKnowledgeNormalizePreview({
+    text: "试用政策：支持 7 天体验，退款争议转人工。",
+    title: "试用政策",
+    source: "policy.md",
+  })
+  const knowledgeNormalizeConfirm: ApiResponse<KnowledgeNormalizeConfirmResult> = await apiClient.confirmKnowledgeNormalizePreview({
+    title: "试用政策",
+    source: "policy.md",
+    preview: {
+      faq_items: [{ question: "如何试用？", answer: "登记后体验。", confidence: "high" }],
+      allowed_claims: ["支持登记体验"],
+      forbidden_claims: ["不能承诺资料外结果"],
+      handoff_rules: ["退款争议转人工"],
+      source_excerpt: "试用政策",
+      warnings: [],
+    },
+  })
+  const knowledgeAcceptanceReport: ApiResponse<KnowledgeAcceptanceReport> = await apiClient.buildKnowledgeAcceptanceReport({
+    questions: ["试用政策是什么？"],
+    limit: 3,
+    min_top_score: 0.7,
+  })
+  const knowledgeTaskStatus: string | undefined = knowledgeTasks.data?.[0]?.status
+  const knowledgeTaskStage: string | undefined = knowledgeTasks.data?.[0]?.stage
+  const knowledgeNormalizeQuestion: string | undefined = knowledgeNormalizePreview.data?.faq_items[0]?.question
+  const knowledgeNormalizeFileName: string | undefined = knowledgeNormalizeConfirm.data?.file_name
+  const knowledgeAcceptanceVerdict: string | undefined = knowledgeAcceptanceReport.data?.items[0]?.verdict
   const knowledgeImport: ApiResponse<KnowledgeImportResult> = await apiClient.importKnowledgeFiles([
     "C:\\docs\\product.pdf",
   ])
@@ -199,8 +235,8 @@ async function assertApiClientContract() {
     stopped,
     restarted,
     settings,
+    embeddingProviderSetting,
     updatedSettings,
-    safetyPolicyAudit,
     exportedSafetyPolicy,
     importedSafetyPolicy,
     restoredSafetyPolicy,
@@ -227,11 +263,10 @@ async function assertApiClientContract() {
     uncertainSendJobs,
     uncertainSendEvidence,
     resolvedSendJob,
-    suggestion,
-    sent,
     updatedControl,
     customers,
     customer,
+    updatedCustomer,
     identityDrafts,
     identityCandidates,
     selfIdentity,
@@ -255,6 +290,15 @@ async function assertApiClientContract() {
     knowledgeDenseScore,
     knowledgeKeywordScore,
     knowledgeMatchTerms,
+    knowledgeTasks,
+    knowledgeNormalizePreview,
+    knowledgeNormalizeConfirm,
+    knowledgeAcceptanceReport,
+    knowledgeTaskStatus,
+    knowledgeTaskStage,
+    knowledgeNormalizeQuestion,
+    knowledgeNormalizeFileName,
+    knowledgeAcceptanceVerdict,
     knowledgeImport,
     webKnowledge,
     patch,

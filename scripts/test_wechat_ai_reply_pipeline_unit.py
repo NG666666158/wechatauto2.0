@@ -651,6 +651,7 @@ class WeChatRuntimeReplyPipelineWiringTests(unittest.TestCase):
         self.assertEqual(captured["retriever"], "retriever")
         self.assertEqual(captured["memory_store"], "memory-store")
         self.assertEqual(captured["event_logger"], "event-logger")
+        self.assertIsNotNone(captured["self_identity_resolver"])
         self.assertEqual(captured["prompt_preview_max_chars"], 128)
         self.assertEqual(captured["active_agent_id"], "assistant-9")
 

@@ -5,34 +5,41 @@ import { useEffect, useState } from "react"
 import { AppShell } from "@/components/app-shell"
 import { EmptyState, ErrorState, LoadingState } from "@/components/api-state"
 import { UserAvatar } from "@/components/user-avatar"
+import { toast } from "@/hooks/use-toast"
 import { apiClient } from "@/lib/api"
-import type { Customer, IdentityCandidate, IdentityDraft, SelfIdentity } from "@/lib/api"
-import { ChevronRight, Pencil, Plus, Save, Search, Sparkles } from "lucide-react"
+import type { Customer, SelfIdentity } from "@/lib/api"
+import { Pencil, Save, Search, Sparkles, X } from "lucide-react"
+
+type CustomerEditState = {
+  display_name: string
+  tagsText: string
+  remark: string
+  status: string
+}
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [selectedId, setSelectedId] = useState("")
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
-  const [drafts, setDrafts] = useState<IdentityDraft[]>([])
-  const [candidates, setCandidates] = useState<IdentityCandidate[]>([])
   const [selfIdentity, setSelfIdentity] = useState<SelfIdentity | null>(null)
   const [selfName, setSelfName] = useState("")
   const [selfFactsText, setSelfFactsText] = useState("")
+  const [editingCustomer, setEditingCustomer] = useState(false)
+  const [savingCustomer, setSavingCustomer] = useState(false)
+  const [customerEdit, setCustomerEdit] = useState<CustomerEditState>({ display_name: "", tagsText: "", remark: "", status: "" })
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [savingSelf, setSavingSelf] = useState(false)
+  const [generatingSelf, setGeneratingSelf] = useState(false)
   const [error, setError] = useState("")
-  const [notice, setNotice] = useState("")
 
   async function loadInitialData() {
     setLoading(true)
     setError("")
     try {
-      const [customersResponse, draftsResponse, candidatesResponse, selfResponse] = await Promise.all([
+      const [customersResponse, selfResponse] = await Promise.all([
         apiClient.listCustomers(),
-        apiClient.listIdentityDrafts(),
-        apiClient.listIdentityCandidates(),
         apiClient.getGlobalSelfIdentity(),
       ])
       if (!customersResponse.success || !customersResponse.data) {
@@ -42,8 +49,6 @@ export default function CustomersPage() {
       const customerList = customersResponse.data
       setCustomers(customerList)
       setSelectedId((current) => current || customerList[0]?.customer_id || "")
-      setDrafts(draftsResponse.success && draftsResponse.data ? draftsResponse.data : [])
-      setCandidates(candidatesResponse.success && candidatesResponse.data ? candidatesResponse.data : [])
       if (selfResponse.success && selfResponse.data) {
         setSelfIdentity(selfResponse.data)
         setSelfName(selfResponse.data.display_name)
@@ -70,6 +75,8 @@ export default function CustomersPage() {
         return
       }
       setSelectedCustomer(response.data)
+      setCustomerEdit(buildCustomerEditState(response.data))
+      setEditingCustomer(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : "无法读取客户详情")
     } finally {
@@ -80,7 +87,6 @@ export default function CustomersPage() {
   async function saveSelfIdentity() {
     setSavingSelf(true)
     setError("")
-    setNotice("")
     const facts = selfFactsText
       .split("\n")
       .map((item) => item.trim())
@@ -91,17 +97,102 @@ export default function CustomersPage() {
         identity_facts: facts,
       })
       if (!response.success || !response.data) {
-        setError(response.error ? `${response.error.code}: ${response.error.message}` : "自我身份保存失败")
+        toast({
+          title: "自我身份保存失败",
+          description: response.error ? `${response.error.code}: ${response.error.message}` : "请稍后重试",
+          variant: "destructive",
+          duration: 1800,
+        })
         return
       }
       setSelfIdentity(response.data)
       setSelfName(response.data.display_name)
       setSelfFactsText(response.data.identity_facts.join("\n"))
-      setNotice("自我身份已保存，后续回复会优先使用这份全局身份事实。")
+      toast({ title: "自我身份已保存", duration: 1800 })
     } catch (err) {
-      setError(err instanceof Error ? err.message : "无法保存自我身份")
+      toast({
+        title: "自我身份保存失败",
+        description: err instanceof Error ? err.message : "无法保存自我身份",
+        variant: "destructive",
+        duration: 1800,
+      })
     } finally {
       setSavingSelf(false)
+    }
+  }
+
+  async function generateSelfIdentityFacts() {
+    const displayName = selfName.trim()
+    if (!displayName) {
+      toast({
+        title: "请先填写显示名称",
+        description: "例如：AI 电商陪跑客服、课程顾问、财税顾问。",
+        variant: "destructive",
+        duration: 1800,
+      })
+      return
+    }
+    setGeneratingSelf(true)
+    try {
+      const response = await apiClient.generateGlobalSelfIdentity({ display_name: displayName })
+      if (!response.success || !response.data) {
+        toast({
+          title: "AI 生成失败",
+          description: response.error ? `${response.error.code}: ${response.error.message}` : "请稍后重试",
+          variant: "destructive",
+          duration: 2200,
+        })
+        return
+      }
+      setSelfName(response.data.display_name)
+      setSelfFactsText(response.data.identity_facts.join("\n"))
+      toast({ title: "身份事实已生成", description: "请确认后再保存。", duration: 1800 })
+    } catch (err) {
+      toast({
+        title: "AI 生成失败",
+        description: err instanceof Error ? err.message : "无法连接本地大模型接口",
+        variant: "destructive",
+        duration: 2200,
+      })
+    } finally {
+      setGeneratingSelf(false)
+    }
+  }
+
+  async function saveCustomer() {
+    if (!selectedCustomer) return
+    setSavingCustomer(true)
+    setError("")
+    try {
+      const response = await apiClient.updateCustomer(selectedCustomer.customer_id, {
+        display_name: customerEdit.display_name.trim(),
+        tags: splitTags(customerEdit.tagsText),
+        remark: customerEdit.remark.trim(),
+        status: customerEdit.status.trim(),
+      })
+      if (!response.success || !response.data) {
+        toast({
+          title: "客户资料保存失败",
+          description: formatCustomerSaveError(response.error),
+          variant: "destructive",
+          duration: 1800,
+        })
+        return
+      }
+      setSelectedCustomer(response.data)
+      setCustomerEdit(buildCustomerEditState(response.data))
+      setCustomers((current) => current.map((item) => (item.customer_id === response.data!.customer_id ? response.data! : item)))
+      setEditingCustomer(false)
+      toast({ title: "客户资料已保存", duration: 1800 })
+    } catch (err) {
+      toast({
+        title: "客户资料保存失败",
+        description: err instanceof Error ? err.message : "无法保存客户资料",
+        variant: "destructive",
+        duration: 1800,
+      })
+    } finally {
+      setSavingCustomer(false)
     }
   }
 
@@ -121,8 +212,8 @@ export default function CustomersPage() {
 
   return (
     <AppShell title="客户">
-      <div className="flex min-h-[656px] flex-1">
-        <aside className="w-[270px] shrink-0 border-r border-slate-200 bg-white">
+      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden bg-[var(--app-content-bg)] p-4">
+        <aside className="flex w-[230px] shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
             <h2 className="mb-3 text-[15px] font-semibold text-slate-800">客户列表</h2>
             <div className="relative">
@@ -136,85 +227,95 @@ export default function CustomersPage() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="p-4">
-              <LoadingState label="正在加载客户" />
-            </div>
-          ) : filteredCustomers.length ? (
-            <ul>
-              {filteredCustomers.map((customer) => (
-                <CustomerRow
-                  key={customer.customer_id}
-                  customer={customer}
-                  active={customer.customer_id === selectedId}
-                  onClick={() => setSelectedId(customer.customer_id)}
-                />
-              ))}
-            </ul>
-          ) : (
-            <div className="p-4">
-              <EmptyState title="暂无客户" />
-            </div>
-          )}
-
-          <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-            <span>共 {customers.length} 位客户</span>
-            <div className="flex items-center gap-1">
-              <span>1</span>
-              <span className="text-slate-400">/ 1</span>
-              <ChevronRight className="h-3.5 w-3.5" />
-            </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {loading ? (
+              <div className="p-4">
+                <LoadingState label="正在加载客户" />
+              </div>
+            ) : filteredCustomers.length ? (
+              <ul>
+                {filteredCustomers.map((customer) => (
+                  <CustomerRow
+                    key={customer.customer_id}
+                    customer={customer}
+                    active={customer.customer_id === selectedId}
+                    onClick={() => setSelectedId(customer.customer_id)}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <div className="p-4">
+                <EmptyState title="暂无客户" />
+              </div>
+            )}
           </div>
         </aside>
 
-        <section className="flex-1 border-r border-slate-200 bg-white p-6">
+        <section className="min-w-0 flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           {error ? <div className="mb-4"><ErrorState message={error} /></div> : null}
-          {notice ? <div className="mb-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-[15px] font-semibold text-slate-800">客户详情</h2>
-            <button className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-slate-400 hover:bg-slate-50">
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
+            {selectedCustomer ? (
+              editingCustomer ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={savingCustomer}
+                    onClick={saveCustomer}
+                    className="flex h-8 items-center gap-1.5 rounded-lg bg-blue-500 px-3 text-xs font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    {savingCustomer ? "保存中" : "保存"}
+                  </button>
+                  <button
+                    disabled={savingCustomer}
+                    onClick={() => {
+                      setCustomerEdit(buildCustomerEditState(selectedCustomer))
+                      setEditingCustomer(false)
+                    }}
+                    className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    取消
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setEditingCustomer(true)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-slate-400 hover:bg-slate-50"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              )
+            ) : null}
           </div>
 
           {loadingDetail ? (
             <LoadingState label="正在加载客户详情" />
           ) : selectedCustomer ? (
-            <CustomerDetail customer={selectedCustomer} />
+            <CustomerDetail
+              customer={selectedCustomer}
+              editing={editingCustomer}
+              editState={customerEdit}
+              onEditChange={setCustomerEdit}
+            />
           ) : (
             <EmptyState title="请选择客户" />
           )}
+        </section>
 
+        <aside className="w-[330px] shrink-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <SelfIdentityCard
-            className="mt-6"
             identity={selfIdentity}
             name={selfName}
             factsText={selfFactsText}
             saving={savingSelf}
+            generating={generatingSelf}
+            compact
             onNameChange={setSelfName}
             onFactsChange={setSelfFactsText}
+            onGenerate={generateSelfIdentityFacts}
             onSave={saveSelfIdentity}
           />
-        </section>
-
-        <aside className="w-[320px] shrink-0 bg-slate-50/40 p-6">
-          <h2 className="mb-4 text-[15px] font-semibold text-slate-800">待确认客户</h2>
-          <div className="space-y-3">
-            <PendingCard
-              title={`身份草稿（${drafts.length} 条）`}
-              text={drafts[0] ? `待确认用户：${drafts[0].draft_user_id}` : "暂无新身份草稿"}
-              kind="draft"
-            />
-            <PendingCard
-              title={`疑似重复客户（${candidates.length} 条）`}
-              text={candidates[0] ? `候选项：${candidates[0].candidate_id}` : "暂无疑似重复客户"}
-              kind="candidate"
-            />
-          </div>
-          <button className="mt-4 flex w-full items-center justify-center gap-1 text-xs text-blue-600 hover:text-blue-700">
-            查看全部身份任务
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
         </aside>
       </div>
     </AppShell>
@@ -240,43 +341,88 @@ function CustomerRow({ customer, active, onClick }: { customer: Customer; active
   )
 }
 
-function CustomerDetail({ customer }: { customer: Customer }) {
+function CustomerDetail({
+  customer,
+  editing,
+  editState,
+  onEditChange,
+}: {
+  customer: Customer
+  editing: boolean
+  editState: CustomerEditState
+  onEditChange: (value: CustomerEditState) => void
+}) {
+  const displayName = editing ? editState.display_name : customer.display_name || customer.customer_id
+  const tags = editing ? splitTags(editState.tagsText) : customer.tags
+  const remark = editing ? editState.remark : customer.remark
+  const status = editing ? editState.status : customer.status
+  const previewCustomer = { ...customer, display_name: displayName, tags, remark, status }
   return (
     <>
-      <div className="mb-6 flex items-center gap-4">
-        <UserAvatar name={customer.display_name || customer.customer_id} size={56} />
+      <div className="mb-4 flex items-center gap-4">
+        <UserAvatar name={displayName || customer.customer_id} size={56} />
         <div>
-          <div className="text-[17px] font-semibold text-slate-800">{customer.display_name || customer.customer_id}</div>
+          <div className="text-[17px] font-semibold text-slate-800">{displayName || customer.customer_id}</div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            {(customer.tags.length ? customer.tags : [statusText(customer.status)]).map((tag) => (
+            {(tags.length ? tags : [statusText(status)]).map((tag) => (
               <span key={tag} className={`rounded px-2 py-0.5 text-xs ${tagClass(tag)}`}>{tag}</span>
             ))}
           </div>
         </div>
       </div>
 
-      <dl className="space-y-4 text-sm">
+      <dl className="space-y-3 text-sm">
         <Field label="客户 ID" value={customer.customer_id} />
-        <Field label="客户名称" value={customer.display_name || "未命名客户"} />
+        <Field
+          label="客户名称"
+          value={
+            editing ? (
+              <input
+                value={editState.display_name}
+                onChange={(event) => onEditChange({ ...editState, display_name: event.target.value })}
+                className="h-8 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-400"
+              />
+            ) : displayName || "未命名客户"
+          }
+        />
         <Field
           label="标签"
           value={
-            <div className="flex flex-wrap items-center gap-1.5">
-              {(customer.tags.length ? customer.tags : [statusText(customer.status)]).map((tag) => (
-                <span key={tag} className={`rounded px-2 py-0.5 text-xs ${tagClass(tag)}`}>{tag}</span>
-              ))}
-              <button className="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-slate-300 text-slate-400">
-                <Plus className="h-3 w-3" />
-              </button>
-            </div>
+            editing ? (
+              <input
+                value={editState.tagsText}
+                onChange={(event) => onEditChange({ ...editState, tagsText: event.target.value })}
+                placeholder="多个标签用逗号分隔"
+                className="h-8 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-400"
+              />
+            ) : (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {(tags.length ? tags : [statusText(status)]).map((tag) => (
+                  <span key={tag} className={`rounded px-2 py-0.5 text-xs ${tagClass(tag)}`}>{tag}</span>
+                ))}
+              </div>
+            )
           }
         />
-        <Field label="备注" value={customer.remark || "暂无备注，可在后续客户编辑阶段补充。"} />
-        <Field label="常见需求" value={deriveNeeds(customer)} />
+        <Field
+          label="用户身份"
+          value={
+            editing ? (
+              <textarea
+                value={editState.remark}
+                onChange={(event) => onEditChange({ ...editState, remark: event.target.value })}
+                rows={3}
+                className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm leading-relaxed outline-none focus:border-blue-400"
+              />
+            ) : remark || "暂无用户身份，可点击右上角编辑补充。"
+          }
+        />
         <Field label="最近联系" value={formatDate(customer.last_contact_at)} />
         <Field label="来源渠道" value="微信会话 / 身份识别链路" />
-        <Field label="当前状态" value={statusText(customer.status)} />
       </dl>
+      <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-xs leading-relaxed text-slate-600">
+        交给模型作为用户身份依据：客户名称、标签、用户身份和来源渠道。客户 ID、最近联系只用于系统记录和排序。
+      </div>
     </>
   )
 }
@@ -287,8 +433,11 @@ function SelfIdentityCard({
   name,
   factsText,
   saving,
+  generating,
+  compact,
   onNameChange,
   onFactsChange,
+  onGenerate,
   onSave,
 }: {
   className?: string
@@ -296,30 +445,42 @@ function SelfIdentityCard({
   name: string
   factsText: string
   saving: boolean
+  generating: boolean
+  compact?: boolean
   onNameChange: (value: string) => void
   onFactsChange: (value: string) => void
+  onGenerate: () => void
   onSave: () => void
 }) {
   return (
-    <div className={`rounded-2xl border border-blue-100 bg-blue-50/40 p-5 ${className ?? ""}`}>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-[15px] font-semibold text-slate-800">
+    <div className={className ?? ""}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 whitespace-nowrap text-[15px] font-semibold text-slate-800">
             <Sparkles className="h-4 w-4 text-blue-500" />
-            自我身份
+            全局自我身份
           </div>
-          <p className="mt-1 text-xs text-slate-500">这是全局默认身份，面对老师、父母等关系身份会在后续层级中叠加。</p>
         </div>
-        <button
-          disabled={saving}
-          onClick={onSave}
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-blue-500 px-3 text-xs font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          <Save className="h-3.5 w-3.5" />
-          {saving ? "保存中" : "保存"}
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            disabled={saving || generating}
+            onClick={onGenerate}
+            className="flex h-8 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 text-xs font-medium text-blue-600 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {generating ? "生成中" : "AI生成"}
+          </button>
+          <button
+            disabled={saving}
+            onClick={onSave}
+            className="flex h-8 items-center gap-1 rounded-lg bg-blue-500 px-2.5 text-xs font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            <Save className="h-3.5 w-3.5" />
+            {saving ? "保存中" : "保存"}
+          </button>
+        </div>
       </div>
-      <div className="grid gap-3">
+      <div className={`grid gap-3 ${compact ? "grid-cols-1" : "grid-cols-2"}`}>
         <label className="text-xs font-medium text-slate-600">
           显示名称
           <input
@@ -334,29 +495,11 @@ function SelfIdentityCard({
           <textarea
             value={factsText}
             onChange={(event) => onFactsChange(event.target.value)}
-            rows={4}
+            rows={compact ? 14 : 5}
             placeholder="例如：我是产品顾问&#10;面对客户时保持专业友好"
             className="mt-1 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-relaxed text-slate-800 focus:border-blue-400 focus:outline-none"
           />
         </label>
-      </div>
-    </div>
-  )
-}
-
-function PendingCard({ title, text, kind }: { title: string; text: string; kind: "draft" | "candidate" }) {
-  const dotClass = kind === "draft" ? "bg-blue-500" : "bg-purple-500"
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="mb-1 flex items-center gap-1.5 text-sm font-medium text-slate-800">
-        <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
-        {title}
-      </div>
-      <p className="mb-3 text-xs text-slate-500">{text}</p>
-      <div className="flex gap-2">
-        <button className="flex-1 rounded-md bg-blue-500 py-1.5 text-xs font-medium text-white hover:bg-blue-600">确认</button>
-        <button className="flex-1 rounded-md border border-slate-200 bg-white py-1.5 text-xs text-slate-600 hover:bg-slate-50">忽略</button>
-        <button className="flex-1 rounded-md border border-slate-200 bg-white py-1.5 text-xs text-slate-600 hover:bg-slate-50">合并</button>
       </div>
     </div>
   )
@@ -387,11 +530,30 @@ function tagClass(tag: string) {
   return "bg-slate-100 text-slate-500"
 }
 
-function deriveNeeds(customer: Customer) {
-  const text = `${customer.remark} ${customer.tags.join(" ")}`
-  if (text.includes("试用")) return "产品试用、功能介绍、价格方案"
-  if (text.includes("优惠")) return "优惠方案、交付周期、售后政策"
-  return "待从后续会话中自动归纳"
+function buildCustomerEditState(customer: Customer): CustomerEditState {
+  return {
+    display_name: customer.display_name || customer.customer_id,
+    tagsText: customer.tags.join("，"),
+    remark: customer.remark || "",
+    status: customer.status || "draft",
+  }
+}
+
+function splitTags(value: string) {
+  return value
+    .split(/[,，、\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function formatCustomerSaveError(error: { code: string; message: string } | null) {
+  if (!error) {
+    return "请稍后重试"
+  }
+  if (error.code === "HTTP_405") {
+    return "当前本地服务版本过旧，还没有客户资料保存接口。请在首页重新启动本地服务后再保存。"
+  }
+  return `${error.code}: ${error.message || "请稍后重试"}`
 }
 
 function formatDate(value: string | null | undefined) {

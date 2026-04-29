@@ -37,6 +37,12 @@ def parse_args() -> argparse.Namespace:
         default=200,
         help="Character overlap between adjacent chunks.",
     )
+    parser.add_argument(
+        "--chunk-strategy",
+        choices=("recursive", "semantic_overlap"),
+        default="semantic_overlap",
+        help="Chunking strategy used to split documents.",
+    )
     return parser.parse_args()
 
 
@@ -64,7 +70,7 @@ def default_index_path(paths_module: Any) -> Path:
     return Path(paths_module.KNOWLEDGE_DIR) / DEFAULT_INDEX_FILENAME
 
 
-def build_index(*, index_path: Path | None, chunk_size: int, overlap: int) -> dict[str, Any]:
+def build_index(*, index_path: Path | None, chunk_size: int, overlap: int, chunk_strategy: str = "semantic_overlap") -> dict[str, Any]:
     deps = resolve_dependencies()
     paths_module = deps["paths"]
     paths_module.bootstrap_data_dirs()
@@ -73,7 +79,7 @@ def build_index(*, index_path: Path | None, chunk_size: int, overlap: int) -> di
     resolved_index_path.parent.mkdir(parents=True, exist_ok=True)
 
     documents = deps["load_knowledge_documents"]()
-    chunker = deps["Chunker"](chunk_size=chunk_size, overlap=overlap)
+    chunker = deps["Chunker"](chunk_size=chunk_size, overlap=overlap, strategy=chunk_strategy)
 
     chunks: list[dict[str, Any]] = []
     for document in documents:
@@ -86,6 +92,7 @@ def build_index(*, index_path: Path | None, chunk_size: int, overlap: int) -> di
         "schema_version": 1,
         "knowledge_dir": str(paths_module.KNOWLEDGE_DIR),
         "embedding_provider": embeddings.__class__.__name__,
+        "chunk_strategy": chunker.strategy,
         "chunk_size": chunk_size,
         "overlap": overlap,
         "documents_loaded": len(documents),
@@ -98,6 +105,7 @@ def build_index(*, index_path: Path | None, chunk_size: int, overlap: int) -> di
                     "title": chunk["title"],
                     "source": chunk["source"],
                     "chunk_index": str(chunk["chunk_index"]),
+                    "chunk_strategy": chunker.strategy,
                 },
                 "vector": vector,
             }
@@ -131,6 +139,7 @@ def main() -> int:
             index_path=args.index_path,
             chunk_size=args.chunk_size,
             overlap=args.overlap,
+            chunk_strategy=args.chunk_strategy,
         )
     except Exception as exc:
         print(f"Knowledge index build failed: {exc}", file=sys.stderr)

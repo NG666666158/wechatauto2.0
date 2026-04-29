@@ -44,9 +44,76 @@ class KnowledgeTrustedRebuildResultData(BaseModel):
     acceptance_snapshot: "KnowledgeAcceptanceSnapshotData | None" = None
 
 
+class KnowledgeTaskData(BaseModel):
+    id: str = ""
+    type: str = ""
+    title: str = ""
+    status: str = ""
+    stage: str = "queued"
+    created_at: str = ""
+    updated_at: str = ""
+    summary: str = ""
+    error: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class KnowledgeNormalizeFaqItemData(BaseModel):
+    question: str = ""
+    answer: str = ""
+    confidence: str = ""
+
+
+class KnowledgeNormalizePreviewData(BaseModel):
+    faq_items: list[KnowledgeNormalizeFaqItemData] = Field(default_factory=list)
+    allowed_claims: list[str] = Field(default_factory=list)
+    forbidden_claims: list[str] = Field(default_factory=list)
+    handoff_rules: list[str] = Field(default_factory=list)
+    source_excerpt: str = ""
+    warnings: list[str] = Field(default_factory=list)
+
+
+class KnowledgeNormalizeConfirmResultData(BaseModel):
+    file_path: str = ""
+    file_name: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    import_result: "KnowledgeImportResultData | dict[str, Any]" = Field(default_factory=dict)
+
+
+class KnowledgeAcceptanceReportItemData(BaseModel):
+    query: str = ""
+    top_chunk_id: str | None = None
+    top_score: float | None = None
+    source: str = ""
+    retrieval_sources: list[str] = Field(default_factory=list)
+    match_terms: list[str] = Field(default_factory=list)
+    trust_status: str = ""
+    verdict: str = ""
+
+
+class KnowledgeAcceptanceReportData(BaseModel):
+    total_questions: int = 0
+    answered_questions: int = 0
+    missing_questions: int = 0
+    average_top_score: float = 0.0
+    trusted_result_count: int = 0
+    needs_review: bool = False
+    items: list[KnowledgeAcceptanceReportItemData] = Field(default_factory=list)
+    markdown: str = ""
+
+
 class DashboardPendingData(BaseModel):
     identity_drafts: int = 0
     identity_candidates: int = 0
+
+
+class DashboardActivityData(BaseModel):
+    today_received_messages: int = 0
+    today_replied_messages: int = 0
+    today_replied_conversations: int = 0
+    pending_total: int = 0
+    pending_reply_jobs: int = 0
+    pending_identity_items: int = 0
+    pending_send_uncertain: int = 0
 
 
 class SendUncertainMetricItemData(BaseModel):
@@ -74,6 +141,7 @@ class DashboardSummaryData(BaseModel):
     runtime: RuntimeStatusData = Field(default_factory=RuntimeStatusData)
     knowledge: KnowledgeStatusData | dict[str, Any] = Field(default_factory=KnowledgeStatusData)
     pending: DashboardPendingData = Field(default_factory=DashboardPendingData)
+    activity: DashboardActivityData = Field(default_factory=DashboardActivityData)
     send_uncertain: SendUncertainMetricsData = Field(default_factory=SendUncertainMetricsData)
 
 
@@ -144,7 +212,18 @@ class SettingsData(BaseModel):
     request_timeout_seconds: float = 30.0
     retry_attempts: int = 2
     real_send_enabled: bool = False
+    embedding_config: "EmbeddingConfigData" = Field(default_factory=lambda: EmbeddingConfigData())
     safety_policy: SafetyPolicyConfigData = Field(default_factory=SafetyPolicyConfigData)
+
+
+class EmbeddingConfigData(BaseModel):
+    provider: str = "fake"
+    base_url: str = "https://api.openai.com/v1"
+    model: str = "text-embedding-3-small"
+    dimensions: int | None = None
+    timeout: float = 30.0
+    api_key_set: bool = False
+    api_key_preview: str = ""
 
 
 class LogsSummaryData(BaseModel):
@@ -203,6 +282,42 @@ class SendReplyResultData(BaseModel):
     text: str = ""
     reason_code: str = ""
     reason: str = ""
+
+
+class KnowledgeEvidenceSummaryData(BaseModel):
+    doc_id: str = ""
+    source: str = ""
+    chunk_index: str = ""
+    text: str = ""
+    score: float | None = None
+    knowledge_trust_status: str = "unknown"
+    knowledge_trust_reason: str = ""
+
+
+class ReplyJobMetadataData(BaseModel):
+    knowledge_evidence: list[KnowledgeEvidenceSummaryData] = Field(default_factory=list)
+
+
+class ReplyJobData(BaseModel):
+    reply_job_id: str = ""
+    conversation_id: str = ""
+    trigger_event_ids: list[str] | str = Field(default_factory=list)
+    input_text: str = ""
+    context_snapshot_id: str | None = None
+    status: str = ""
+    draft_reply: str | None = None
+    risk_level: str = "LOW"
+    need_human_review: bool = False
+    reason_codes: list[str] | str | None = Field(default_factory=list)
+    idempotency_key: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str | None = None
+    updated_at: str | None = None
+    review_reason: str | None = None
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+    send_status: str = ""
+    send_result: dict[str, Any] = Field(default_factory=dict)
 
 
 class CustomerData(BaseModel):

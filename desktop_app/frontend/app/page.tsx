@@ -2,12 +2,12 @@
 
 import type { ReactNode } from "react"
 import { useCallback, useEffect, useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
 import { AppShell } from "@/components/app-shell"
 import { ErrorState, LoadingState } from "@/components/api-state"
 import { useServerEvents } from "@/hooks/use-server-events"
 import { apiClient } from "@/lib/api"
-import type { DashboardSummary, LogsSummary, RecentLogEvent, RuntimeAction, RuntimeStatus, SendJob, SendUncertainMetrics, WechatEnvironment } from "@/lib/api"
+import { getDesktopShellBridge } from "@/lib/electron-shell"
+import type { DashboardSummary, LogsSummary, RecentLogEvent, RuntimeAction, RuntimeStatus, WechatEnvironment } from "@/lib/api"
 import {
   Bell,
   Bot,
@@ -16,8 +16,8 @@ import {
   ListTodo,
   MessageCircle,
   Play,
+  Power,
   RefreshCw,
-  Settings,
   Square,
   UserPlus,
   Users,
@@ -27,24 +27,19 @@ type HomeState = {
   dashboard: DashboardSummary | null
   runtime: RuntimeStatus | null
   logsSummary: LogsSummary | null
-  sendUncertainMetrics: SendUncertainMetrics | null
   environment: WechatEnvironment | null
   recentLogs: RecentLogEvent[]
-  uncertainSendJobs: SendJob[]
 }
 
 const emptyState: HomeState = {
   dashboard: null,
   runtime: null,
   logsSummary: null,
-  sendUncertainMetrics: null,
   environment: null,
   recentLogs: [],
-  uncertainSendJobs: [],
 }
 
 export default function HomePage() {
-  const router = useRouter()
   const [state, setState] = useState<HomeState>(emptyState)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
@@ -52,19 +47,18 @@ export default function HomePage() {
   const [currentTime, setCurrentTime] = useState("--:--:--")
   const [bootstrapHint, setBootstrapHint] = useState("")
   const [environmentChecked, setEnvironmentChecked] = useState(false)
+  const [backendReady, setBackendReady] = useState(false)
 
   const loadHomeData = useCallback(async () => {
     setError("")
-    const [dashboard, runtime, logsSummary, recentLogs, uncertainSendJobs, sendUncertainMetrics] = await Promise.all([
+    const [dashboard, runtime, logsSummary, recentLogs] = await Promise.all([
       apiClient.getDashboardSummary(),
       apiClient.getRuntimeStatus(),
       apiClient.getLogsSummary(20),
       apiClient.getRecentLogs(3),
-      apiClient.listUncertainSendJobs(20),
-      apiClient.getSendUncertainMetrics(),
     ])
 
-    const failed = [dashboard, runtime, logsSummary, recentLogs, uncertainSendJobs, sendUncertainMetrics].find((item) => !item.success)
+    const failed = [dashboard, runtime, logsSummary, recentLogs].find((item) => !item.success)
     if (failed?.error) {
       setError(`${failed.error.code}: ${failed.error.message}`)
     }
@@ -73,17 +67,17 @@ export default function HomePage() {
       dashboard: dashboard.data,
       runtime: runtime.data,
       logsSummary: logsSummary.data,
-      sendUncertainMetrics: sendUncertainMetrics.data ?? dashboard.data?.send_uncertain ?? null,
       environment: previous.environment,
       recentLogs: recentLogs.data ?? [],
-      uncertainSendJobs: uncertainSendJobs.data ?? [],
     }))
+    setBackendReady(true)
     setLoading(false)
   }, [])
 
   useEffect(() => {
     void loadHomeData().catch((err: unknown) => {
       setLoading(false)
+      setBackendReady(false)
       setError(err instanceof Error ? err.message : "无法连接本地后端服务")
     })
   }, [])
@@ -100,10 +94,35 @@ export default function HomePage() {
     void loadHomeData()
   }, { eventTypes: ["runtime.status", "log.event"], replay: 1 })
 
-  function runAction(action: "check" | "start" | "stop") {
+  function runAction(action: "service" | "check" | "start" | "stop") {
     startTransition(async () => {
       setError("")
       setBootstrapHint("")
+      if (action === "service") {
+        const shellBridge = getDesktopShellBridge()
+        if (!shellBridge.isAvailable()) {
+          setError("当前是网页预览模式，无法直接拉起本地后端。请先运行 scripts\\dev_start.ps1；打包成客户端后，此按钮会自动启动后端服务。")
+          return
+        }
+        try {
+          const session = await shellBridge.ensureBackend()
+          if (!session) {
+            setError("客户端桥接不可用，无法启动本地服务。")
+            return
+          }
+          setBackendReady(true)
+          setBootstrapHint(session.reused ? "本地后端服务已在运行。" : "本地后端服务已启动。下一步请检测微信环境。")
+          await loadHomeData()
+        } catch (err) {
+          setBackendReady(false)
+          setError(err instanceof Error ? err.message : "本地后端服务启动失败")
+        }
+        return
+      }
+      if (!backendReady) {
+        setError("请先开启本地服务，再继续检测微信环境或开始自动回复。")
+        return
+      }
       if (action === "check") {
         setEnvironmentChecked(false)
         const result = await apiClient.bootstrapCheckRuntime()
@@ -185,7 +204,6 @@ export default function HomePage() {
   const dashboard = state.dashboard
   const runtime = state.runtime ?? dashboard?.runtime
   const app = dashboard?.app
-  const sendUncertainMetrics = state.sendUncertainMetrics ?? dashboard?.send_uncertain ?? null
   const environment = state.environment
   const synced = Boolean(runtime?.running)
 
@@ -202,7 +220,7 @@ export default function HomePage() {
         </div>
       }
     >
-      <div className="space-y-5 p-7">
+      <div className="space-y-4 p-5">
         {error ? <ErrorState message={error} /> : null}
         {!error && bootstrapHint ? (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
@@ -213,7 +231,7 @@ export default function HomePage() {
           <LoadingState label="正在连接本地后端服务" />
         ) : (
           <>
-            <div className="grid grid-cols-5 gap-4">
+            <div className="grid grid-cols-5 gap-3">
               <StatusCard
                 label="微信连接状态"
                 icon={<CheckCircle2 className="h-6 w-6 text-emerald-500" />}
@@ -235,10 +253,10 @@ export default function HomePage() {
                 valueClass={runtime?.running ? "text-blue-600" : "text-slate-600"}
               />
               <StatusCard
-                label="今日接待"
+                label="今日收到"
                 icon={<Users className="h-6 w-6 text-orange-500" />}
-                value={String(app?.today_received ?? runtime?.daemon.today_received ?? 0)}
-                sub="来自运行统计"
+                value={String(dashboard?.activity?.today_received_messages ?? app?.today_received ?? runtime?.daemon.today_received ?? 0)}
+                sub="今日记录的收到消息"
                 valueClass="text-[var(--app-strong-text)]"
                 accentClass="text-orange-500"
                 isNumber
@@ -246,8 +264,8 @@ export default function HomePage() {
               <StatusCard
                 label="今日回复"
                 icon={<MessageCircle className="h-6 w-6 text-violet-500" />}
-                value={String(app?.today_replied ?? runtime?.daemon.today_replied ?? 0)}
-                sub="自动回复成功数"
+                value={String(dashboard?.activity?.today_replied_messages ?? app?.today_replied ?? runtime?.daemon.today_replied ?? 0)}
+                sub={`回复用户 ${dashboard?.activity?.today_replied_conversations ?? 0}`}
                 valueClass="text-[var(--app-strong-text)]"
                 accentClass="text-violet-500"
                 isNumber
@@ -255,8 +273,8 @@ export default function HomePage() {
               <StatusCard
                 label="待处理事项"
                 icon={<Bell className="h-6 w-6 text-rose-500" />}
-                value={String(state.uncertainSendJobs.length)}
-                sub={`SEND_UNCERTAIN / pending ${app?.pending_count ?? (dashboard?.pending.identity_candidates ?? 0)} / errors ${state.logsSummary?.recent_error_count ?? 0}`}
+                value={String(dashboard?.activity?.pending_total ?? 0)}
+                sub={`回复 ${dashboard?.activity?.pending_reply_jobs ?? 0} / 身份 ${dashboard?.activity?.pending_identity_items ?? 0} / 发送 ${dashboard?.activity?.pending_send_uncertain ?? 0}`}
                 valueClass="text-[var(--app-strong-text)]"
                 accentClass="text-rose-500"
                 isNumber
@@ -265,12 +283,19 @@ export default function HomePage() {
 
             <section className="rounded-xl border border-[var(--app-card-border)] bg-[var(--app-card-bg)] p-5 shadow-[var(--app-card-shadow)]">
               <h2 className="mb-3 text-[17px] font-bold text-[var(--app-title)]">快捷操作</h2>
-              <div className="grid grid-cols-4 gap-5">
+              <div className="grid grid-cols-4 gap-3">
+                <QuickAction
+                  icon={<Power className="h-5 w-5 text-white" />}
+                  iconBg={backendReady ? "bg-emerald-500" : "bg-blue-500"}
+                  label={backendReady ? "本地服务已开启" : "开启本地服务"}
+                  disabled={isPending}
+                  onClick={() => runAction("service")}
+                />
                 <QuickAction
                   icon={<RefreshCw className={`h-5 w-5 text-white ${isPending ? "animate-spin" : ""}`} />}
                   iconBg={environmentChecked ? "bg-emerald-500" : "bg-orange-500"}
                   label={environmentChecked ? "微信环境已检测" : "检测微信环境"}
-                  disabled={isPending || Boolean(runtime?.running)}
+                  disabled={isPending || !backendReady || Boolean(runtime?.running)}
                   onClick={() => runAction("check")}
                 />
                 <QuickAction
@@ -284,19 +309,11 @@ export default function HomePage() {
                   icon={<RefreshCw className={`h-5 w-5 text-white ${isPending ? "animate-spin" : ""}`} />}
                   iconBg="bg-orange-500"
                   label="刷新运行状态"
-                  disabled={isPending}
+                  disabled={isPending || !backendReady}
                   onClick={() => void loadHomeData()}
-                />
-                <QuickAction
-                  icon={<Settings className="h-5 w-5 text-white" />}
-                  iconBg="bg-blue-500"
-                  label="进入设置"
-                  onClick={() => router.push("/settings")}
                 />
               </div>
             </section>
-
-            <SendUncertainRiskOverview metrics={sendUncertainMetrics} />
 
             <section className="rounded-xl border border-[var(--app-card-border)] bg-[var(--app-card-bg)] p-5 shadow-[var(--app-card-shadow)]">
               <h2 className="mb-3 text-[17px] font-bold text-[var(--app-title)]">最近动态</h2>
@@ -319,76 +336,6 @@ export default function HomePage() {
   )
 }
 
-function SendUncertainRiskOverview({ metrics }: { metrics: SendUncertainMetrics | null }) {
-  const top_error_codes = metrics?.top_error_codes ?? []
-  const top_conversations = metrics?.top_conversations ?? []
-  return (
-    <section className="rounded-xl border border-rose-200 bg-white p-5 shadow-[var(--app-card-shadow)]">
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-[17px] font-bold text-[var(--app-title)]">SEND_UNCERTAIN risk overview</h2>
-          <p className="mt-1 text-xs font-medium text-[var(--app-muted-text)]">Manual review only. This panel never retries sends.</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => window.location.assign("/pending")}
-          className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50"
-        >
-          Open Pending
-        </button>
-      </div>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <RiskMetric label="Unresolved" value={String(metrics?.unresolved_total ?? 0)} />
-        <RiskMetric label="Recent 24h" value={String(metrics?.recent_24h ?? 0)} />
-        <RiskMetric label="Top error" value={top_error_codes[0]?.error_code ?? "none"} sub={formatMetricCount(top_error_codes[0]?.count)} />
-        <RiskMetric
-          label="Top conversation"
-          value={top_conversations[0]?.target_title || top_conversations[0]?.conversation_id || "none"}
-          sub={formatMetricCount(top_conversations[0]?.count)}
-        />
-      </div>
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <RiskList title="Top error_code" items={top_error_codes.map((item) => `${item.error_code}: ${item.count}`)} />
-        <RiskList
-          title="Top conversation"
-          items={top_conversations.map((item) => `${item.target_title || item.conversation_id}: ${item.count}`)}
-        />
-      </div>
-    </section>
-  )
-}
-
-function RiskMetric({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="rounded-lg border border-[var(--app-row-border)] bg-white/60 p-3">
-      <div className="text-xs font-bold uppercase text-[var(--app-muted-text)]">{label}</div>
-      <div className="mt-2 truncate text-lg font-bold text-[var(--app-strong-text)]">{value}</div>
-      {sub ? <div className="mt-1 text-xs font-medium text-[var(--app-muted-text)]">{sub}</div> : null}
-    </div>
-  )
-}
-
-function RiskList({ title, items }: { title: string; items: string[] }) {
-  return (
-    <div className="rounded-lg border border-[var(--app-row-border)] p-3">
-      <div className="mb-2 text-xs font-bold uppercase text-[var(--app-muted-text)]">{title}</div>
-      {items.length ? (
-        <ul className="space-y-1 text-xs font-semibold text-[var(--app-text)]">
-          {items.slice(0, 5).map((item) => (
-            <li key={item} className="truncate">{item}</li>
-          ))}
-        </ul>
-      ) : (
-        <div className="text-xs font-medium text-[var(--app-muted-text)]">none</div>
-      )}
-    </div>
-  )
-}
-
-function formatMetricCount(value: number | undefined) {
-  return typeof value === "number" ? `${value} jobs` : undefined
-}
-
 function StatusCard({
   label,
   icon,
@@ -407,13 +354,13 @@ function StatusCard({
   isNumber?: boolean
 }) {
   return (
-    <div className="min-h-[118px] rounded-xl border border-[var(--app-card-border)] bg-[var(--app-card-bg)] p-4 shadow-[var(--app-card-shadow)]">
-      <div className={`mb-4 text-sm font-bold ${accentClass ?? valueClass}`}>{label}</div>
+    <div className="min-h-[104px] rounded-xl border border-[var(--app-card-border)] bg-[var(--app-card-bg)] p-3 shadow-[var(--app-card-shadow)]">
+      <div className={`mb-3 text-sm font-bold ${accentClass ?? valueClass}`}>{label}</div>
       <div className="flex items-center gap-3">
         {icon}
         <span className={`${valueClass} ${isNumber ? "text-2xl font-semibold leading-none" : "text-lg font-bold"}`}>{value}</span>
       </div>
-      <div className="mt-3 text-xs font-medium text-[var(--app-muted-text)]">{sub}</div>
+      <div className="mt-2 line-clamp-2 text-xs font-medium text-[var(--app-muted-text)]">{sub}</div>
     </div>
   )
 }
@@ -435,7 +382,7 @@ function QuickAction({
     <button
       disabled={disabled}
       onClick={onClick}
-      className="flex h-14 items-center justify-center gap-3 rounded-lg border border-[var(--app-action-border)] bg-[var(--app-action-bg)] px-5 text-left transition-colors hover:border-blue-300 hover:bg-[var(--app-action-hover-bg)] disabled:cursor-not-allowed disabled:opacity-60"
+      className="flex h-12 items-center justify-center gap-2 rounded-lg border border-[var(--app-action-border)] bg-[var(--app-action-bg)] px-3 text-left transition-colors hover:border-blue-300 hover:bg-[var(--app-action-hover-bg)] disabled:cursor-not-allowed disabled:opacity-60"
     >
       <span className={`flex h-8 w-8 items-center justify-center rounded-full ${iconBg}`}>{icon}</span>
       <span className="text-sm font-bold text-[var(--app-strong-text)]">{label}</span>

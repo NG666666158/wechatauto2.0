@@ -7,6 +7,7 @@ from typing import Any, Mapping
 
 from wechat_ai.safety import SafetyPatternRule, SafetyPolicyConfig, default_safety_policy_config, set_rule_group_enabled
 
+from .embedding_config import DesktopEmbeddingConfig
 from .models import PrivacyPolicy, ScheduleBlock, SettingsSnapshot, WorkHours
 
 
@@ -26,8 +27,13 @@ class DesktopSettingsStore:
         updated = self._apply_patch(current, patch)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("w", encoding="utf-8") as handle:
-            json.dump(asdict(updated), handle, ensure_ascii=False, indent=2)
+            json.dump(self._serialize(updated), handle, ensure_ascii=False, indent=2)
         return updated
+
+    def _serialize(self, settings: SettingsSnapshot) -> dict[str, Any]:
+        payload = asdict(settings)
+        payload["embedding_config"] = settings.embedding_config.to_storage_dict()
+        return payload
 
     def _deserialize(self, payload: Mapping[str, Any]) -> SettingsSnapshot:
         work_hours_payload = payload.get("work_hours", {})
@@ -42,6 +48,9 @@ class DesktopSettingsStore:
         safety_policy_payload = payload.get("safety_policy", {})
         if not isinstance(safety_policy_payload, Mapping):
             safety_policy_payload = {}
+        embedding_config_payload = payload.get("embedding_config", {})
+        if not isinstance(embedding_config_payload, Mapping):
+            embedding_config_payload = {}
         return SettingsSnapshot(
             auto_reply_enabled=bool(payload.get("auto_reply_enabled", True)),
             reply_style=str(payload.get("reply_style", "自然友好")),
@@ -82,6 +91,7 @@ class DesktopSettingsStore:
             request_timeout_seconds=max(float(payload.get("request_timeout_seconds", 30.0)), 1.0),
             retry_attempts=max(int(payload.get("retry_attempts", 2)), 0),
             real_send_enabled=bool(payload.get("real_send_enabled", False)),
+            embedding_config=DesktopEmbeddingConfig.from_dict(embedding_config_payload),
             safety_policy=_safety_policy(safety_policy_payload),
         )
 
@@ -118,6 +128,9 @@ class DesktopSettingsStore:
                     for nested_key, nested_value in value.items():
                         current_policy[nested_key] = nested_value
                     payload["safety_policy"] = current_policy
+            elif key == "embedding_config" and isinstance(value, Mapping):
+                current_config = current.embedding_config
+                payload["embedding_config"] = current_config.apply_patch(value).to_storage_dict()
             elif key in payload:
                 payload[key] = value
         return self._deserialize(payload)
@@ -166,9 +179,10 @@ def _safety_rules(value: object, defaults: list[SafetyPatternRule]) -> list[Safe
         if not rule_id:
             continue
         default_rule = defaults_by_id.get(rule_id)
+        has_patterns = "patterns" in item
         patterns_value = item.get("patterns", default_rule.patterns if default_rule else [])
         patterns = _string_list(patterns_value)
-        if not patterns and default_rule:
+        if not has_patterns and not patterns and default_rule:
             patterns = list(default_rule.patterns)
         rules.append(
             SafetyPatternRule(
