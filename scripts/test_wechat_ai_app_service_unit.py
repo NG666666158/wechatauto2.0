@@ -110,6 +110,23 @@ class FakeDaemonRunner:
         self.running_pids.discard(pid)
         return True
 
+    def is_running(self, pid: int) -> bool:
+        return pid in self.running_pids
+
+
+def _configure_minimax_for_tests(service: object) -> None:
+    service.update_settings(
+        {
+            "model_config": {
+                "provider": "minimax",
+                "minimax": {
+                    "api_key": "dummy-minimax-key",
+                    "model": "MiniMax-M2.7",
+                },
+            }
+        }
+    )
+
     def is_running(self, pid: int | None) -> bool:
         return pid in self.running_pids
 
@@ -197,6 +214,8 @@ class DesktopSettingsStoreTests(TestCase):
             snapshot = store.load()
             self.assertTrue(snapshot.auto_reply_enabled)
             self.assertEqual(snapshot.reply_style, "自然友好")
+            self.assertEqual(snapshot.work_hours.start_day, "mon")
+            self.assertEqual(snapshot.work_hours.end_day, "fri")
             self.assertEqual(snapshot.work_hours.start, "09:00")
             self.assertTrue(snapshot.run_silently)
             self.assertEqual(snapshot.esc_action, "pause")
@@ -214,6 +233,7 @@ class DesktopSettingsStoreTests(TestCase):
                 {
                     "auto_reply_enabled": False,
                     "reply_style": "专业友好",
+                    "work_hours": {"start_day": "tue", "end_day": "sat", "start": "10:00", "end": "19:30"},
                     "schedule_enabled": True,
                     "schedule_blocks": [
                         {"day_of_week": "mon", "start": "09:00", "end": "18:00", "label": "工作时段"}
@@ -222,6 +242,10 @@ class DesktopSettingsStoreTests(TestCase):
             )
             self.assertFalse(updated.auto_reply_enabled)
             self.assertEqual(updated.reply_style, "专业友好")
+            self.assertEqual(updated.work_hours.start_day, "tue")
+            self.assertEqual(updated.work_hours.end_day, "sat")
+            self.assertEqual(updated.work_hours.start, "10:00")
+            self.assertEqual(updated.work_hours.end, "19:30")
             self.assertTrue(updated.schedule_enabled)
             self.assertEqual(len(updated.schedule_blocks), 1)
             self.assertEqual(updated.schedule_blocks[0].label, "工作时段")
@@ -393,6 +417,48 @@ class DesktopAppServiceTests(TestCase):
 
             self.assertEqual(preserved.embedding_config.model, "text-embedding-next")
             self.assertEqual(env["WECHATAUTO_EMBEDDING_API_KEY"], "dummy-test-123456")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_model_config_settings_hide_raw_api_key_and_preserve_empty_patch(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_model_settings")
+        try:
+            service = DesktopAppService(data_root=temp_dir)
+            updated = service.update_settings(
+                {
+                    "model_config": {
+                        "provider": "minimax",
+                        "minimax": {
+                            "model": "MiniMax-M2.7",
+                            "api_key": "dummy-minimax-123456",
+                        },
+                    }
+                }
+            )
+            self.assertEqual(updated.model_config.provider, "minimax")
+            self.assertEqual(updated.model_config.minimax.model, "MiniMax-M2.7")
+            self.assertTrue(updated.model_config.minimax.api_key_set)
+            self.assertNotIn("123456", str(updated.model_config.minimax.to_dict().get("api_key_preview", "")))
+
+            preserved = service.update_settings({"model_config": {"minimax": {"api_key": "", "timeout": 20}}})
+            env = preserved.model_config.minimax.to_env_overrides()
+
+            self.assertEqual(preserved.model_config.minimax.timeout, 20)
+            self.assertEqual(env["MINIMAX_API_KEY"], "dummy-minimax-123456")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_start_daemon_requires_model_api_key(self) -> None:
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_model_required")
+        try:
+            service = DesktopAppService(data_root=temp_dir, daemon_runner=FakeDaemonRunner())
+
+            with self.assertRaisesRegex(ValueError, "MiniMax API Key"):
+                service.start_daemon()
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -699,7 +765,9 @@ class DesktopAppServiceTests(TestCase):
 
             self.assertEqual(conversations[0].conversation_id, "friend:alice")
             self.assertEqual(conversations[0].latest_message, "支持 7 天试用。")
+            self.assertEqual(conversations[0].unread_count, 2)
             self.assertEqual(detail["conversation"]["title"], "Alice")
+            self.assertEqual(detail["conversation"]["unread_count"], 2)
             self.assertEqual(len(detail["messages"]), 2)
             self.assertEqual(suggestion.status, "ready")
             self.assertEqual(suggestion.suggestion, "建议:请问支持试用吗？")
@@ -1221,6 +1289,8 @@ class DesktopAppServiceTests(TestCase):
             self.assertEqual(result["status"], "blocked")
             self.assertFalse(result["allowed"])
             self.assertEqual(result["reason_code"], "UNTRUSTED_FAKE_EMBEDDINGS")
+            self.assertTrue(str(result.get("send_job_id") or "").startswith("send_"))
+            self.assertEqual(service.list_send_attempts(str(result["send_job_id"]))[0]["status"], "SEND_BLOCKED")
             self.assertEqual(sender.sent, [])
             self.assertEqual(len(search_results), 1)
         finally:
@@ -1250,6 +1320,8 @@ class DesktopAppServiceTests(TestCase):
             self.assertEqual(result["reason_code"], "UNTRUSTED_KNOWLEDGE_EMBEDDINGS")
             self.assertEqual(result["knowledge_trust_status"], "untrusted")
             self.assertEqual(result["knowledge_trust_reason"], "embedding_trust_not_declared")
+            self.assertTrue(str(result.get("send_job_id") or "").startswith("send_"))
+            self.assertEqual(service.list_send_attempts(str(result["send_job_id"]))[0]["status"], "SEND_BLOCKED")
             self.assertEqual(sender.sent, [])
             self.assertEqual(search_results[0]["embedding_trust_status"], "untrusted")
             self.assertEqual(search_results[0]["embedding_trust_reason"], "embedding_trust_not_declared")
@@ -1326,10 +1398,14 @@ class DesktopAppServiceTests(TestCase):
             self.assertEqual(result["status"], "send_uncertain")
             self.assertEqual(duplicate["status"], "blocked")
             self.assertEqual(duplicate["reason_code"], "CONVERSATION_PAUSED")
+            self.assertTrue(str(duplicate.get("send_job_id") or "").startswith("send_"))
             self.assertEqual(len(sender.sent), 1)
-            self.assertEqual(len(uncertain_jobs), 1)
-            self.assertEqual(uncertain_jobs[0]["conversation_id"], "friend:alice")
-            self.assertEqual(uncertain_jobs[0]["content"], "not visible yet")
+            self.assertEqual(len(uncertain_jobs), 2)
+            self.assertEqual({job["conversation_id"] for job in uncertain_jobs}, {"friend:alice"})
+            self.assertEqual({job["content"] for job in uncertain_jobs}, {"not visible yet"})
+            duplicate_attempts = service.list_send_attempts(str(duplicate["send_job_id"]))
+            self.assertEqual(duplicate_attempts[0]["status"], "SEND_BLOCKED")
+            self.assertEqual(duplicate_attempts[0]["error_code"], "CONVERSATION_PAUSED")
             self.assertTrue(service.get_conversation_control("friend:alice")["paused"])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1354,9 +1430,11 @@ class DesktopAppServiceTests(TestCase):
             self.assertEqual(blocked["status"], "blocked")
             self.assertFalse(blocked["allowed"])
             self.assertEqual(blocked["reason_code"], "UNRESOLVED_SEND_UNCERTAIN")
+            self.assertTrue(str(blocked.get("send_job_id") or "").startswith("send_"))
             self.assertEqual(sender.sent, [])
 
             service.runtime_state_store.resolve_uncertain_send_job(send["send_job_id"], resolution="failed")
+            service.runtime_state_store.resolve_uncertain_send_job(str(blocked["send_job_id"]), resolution="failed")
             allowed = service.send_reply("friend:alice", "next reply")
 
             self.assertEqual(allowed["status"], "sent")
@@ -1470,6 +1548,7 @@ class DesktopAppServiceTests(TestCase):
         try:
             runner = FakeDaemonRunner()
             service = DesktopAppService(data_root=temp_dir, daemon_runner=runner)
+            _configure_minimax_for_tests(service)
             started = service.start_daemon()
             self.assertEqual(started["state"], "running")
             self.assertEqual(started["pid"], 4321)
@@ -1490,6 +1569,7 @@ class DesktopAppServiceTests(TestCase):
             runner = FakeDaemonRunner()
             service = DesktopAppService(data_root=temp_dir, daemon_runner=runner)
             service.update_settings({"force_stop_hotkey": "ctrl+alt+f10"})
+            _configure_minimax_for_tests(service)
 
             service.start_daemon()
 
@@ -1556,6 +1636,7 @@ class DesktopAppServiceTests(TestCase):
         try:
             runner = FakeDaemonRunner()
             service = DesktopAppService(data_root=temp_dir, daemon_runner=runner)
+            _configure_minimax_for_tests(service)
 
             service.start_daemon()
 
@@ -1594,6 +1675,7 @@ class DesktopAppServiceTests(TestCase):
         try:
             runner = FakeDaemonRunner()
             service = DesktopAppService(data_root=temp_dir, daemon_runner=runner)
+            _configure_minimax_for_tests(service)
             service.start_daemon()
 
             self.assertEqual(len(runner.stop_events), 1)
@@ -1617,6 +1699,7 @@ class DesktopAppServiceTests(TestCase):
             service = DesktopAppService(data_root=temp_dir, daemon_runner=runner)
             (temp_dir / "app").mkdir(parents=True, exist_ok=True)
             (temp_dir / "app" / "force_stop.flag").write_text("stop\n", encoding="utf-8")
+            _configure_minimax_for_tests(service)
 
             service.start_daemon()
             service.force_stop_daemon()
@@ -1637,6 +1720,7 @@ class DesktopAppServiceTests(TestCase):
         try:
             runner = FakeDaemonRunner()
             service = DesktopAppService(data_root=temp_dir, daemon_runner=runner)
+            _configure_minimax_for_tests(service)
 
             result = service.force_stop_daemon()
 
@@ -1656,9 +1740,36 @@ class DesktopAppServiceTests(TestCase):
         try:
             runner = FakeDaemonRunner()
             service = DesktopAppService(data_root=temp_dir, daemon_runner=runner)
+            _configure_minimax_for_tests(service)
             started = service.start_daemon()
             runner.running_pids.clear()
             status = service.get_daemon_status()
+            self.assertEqual(started["state"], "running")
+            self.assertEqual(status["state"], "stopped")
+            self.assertIsNone(status["pid"])
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_get_daemon_status_normalizes_stale_running_state(self) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        from wechat_ai.app.service import DesktopAppService
+
+        temp_dir = _fresh_dir(".tmp_app_service_stale_daemon")
+        try:
+            runner = FakeDaemonRunner()
+            service = DesktopAppService(data_root=temp_dir, daemon_runner=runner)
+            _configure_minimax_for_tests(service)
+            started = service.start_daemon()
+            stale_time = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
+            state_path = temp_dir / "app" / "daemon_state.json"
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+            payload["last_started_at"] = stale_time
+            payload["last_heartbeat"] = stale_time
+            state_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            status = service.get_daemon_status()
+
             self.assertEqual(started["state"], "running")
             self.assertEqual(status["state"], "stopped")
             self.assertIsNone(status["pid"])
@@ -2136,6 +2247,10 @@ class DesktopAppServiceTests(TestCase):
             }
             service.update_settings(
                 {
+                    "model_config": {
+                        "provider": "minimax",
+                        "minimax": {"api_key": "dummy-minimax-key", "model": "MiniMax-M2.7"},
+                    },
                     "schedule_enabled": True,
                     "schedule_blocks": [
                         {"day_of_week": "mon", "start": "09:00", "end": "18:00", "label": "工作时段"}

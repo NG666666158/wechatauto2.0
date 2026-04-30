@@ -8,6 +8,7 @@ from typing import Any, Mapping
 from wechat_ai.safety import SafetyPatternRule, SafetyPolicyConfig, default_safety_policy_config, set_rule_group_enabled
 
 from .embedding_config import DesktopEmbeddingConfig
+from .model_config import DesktopModelConfig
 from .models import PrivacyPolicy, ScheduleBlock, SettingsSnapshot, WorkHours
 
 
@@ -32,6 +33,7 @@ class DesktopSettingsStore:
 
     def _serialize(self, settings: SettingsSnapshot) -> dict[str, Any]:
         payload = asdict(settings)
+        payload["model_config"] = settings.model_config.to_storage_dict()
         payload["embedding_config"] = settings.embedding_config.to_storage_dict()
         return payload
 
@@ -51,6 +53,9 @@ class DesktopSettingsStore:
         embedding_config_payload = payload.get("embedding_config", {})
         if not isinstance(embedding_config_payload, Mapping):
             embedding_config_payload = {}
+        model_config_payload = payload.get("model_config", {})
+        if not isinstance(model_config_payload, Mapping):
+            model_config_payload = {}
         return SettingsSnapshot(
             auto_reply_enabled=bool(payload.get("auto_reply_enabled", True)),
             reply_style=str(payload.get("reply_style", "自然友好")),
@@ -58,6 +63,8 @@ class DesktopSettingsStore:
             sensitive_message_review=bool(payload.get("sensitive_message_review", True)),
             work_hours=WorkHours(
                 enabled=bool(work_hours_payload.get("enabled", True)),
+                start_day=str(work_hours_payload.get("start_day", "mon")).strip() or "mon",
+                end_day=str(work_hours_payload.get("end_day", "fri")).strip() or "fri",
                 start=str(work_hours_payload.get("start", "09:00")),
                 end=str(work_hours_payload.get("end", "18:00")),
             ),
@@ -91,6 +98,7 @@ class DesktopSettingsStore:
             request_timeout_seconds=max(float(payload.get("request_timeout_seconds", 30.0)), 1.0),
             retry_attempts=max(int(payload.get("retry_attempts", 2)), 0),
             real_send_enabled=bool(payload.get("real_send_enabled", False)),
+            model_config=DesktopModelConfig.from_dict(model_config_payload),
             embedding_config=DesktopEmbeddingConfig.from_dict(embedding_config_payload),
             safety_policy=_safety_policy(safety_policy_payload),
         )
@@ -131,6 +139,9 @@ class DesktopSettingsStore:
             elif key == "embedding_config" and isinstance(value, Mapping):
                 current_config = current.embedding_config
                 payload["embedding_config"] = current_config.apply_patch(value).to_storage_dict()
+            elif key == "model_config" and isinstance(value, Mapping):
+                current_config = current.model_config
+                payload["model_config"] = current_config.apply_patch(value).to_storage_dict()
             elif key in payload:
                 payload[key] = value
         return self._deserialize(payload)

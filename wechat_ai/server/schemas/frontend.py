@@ -80,6 +80,8 @@ class PrivacyPolicyPatchRequest(StrictRequestModel):
 
 class WorkHoursPatchRequest(StrictRequestModel):
     enabled: bool | None = None
+    start_day: str | None = Field(None, max_length=16)
+    end_day: str | None = Field(None, max_length=16)
     start: str | None = Field(None, min_length=4, max_length=5)
     end: str | None = Field(None, min_length=4, max_length=5)
 
@@ -122,6 +124,18 @@ class EmbeddingConfigPatchRequest(StrictRequestModel):
     api_key: str | None = Field(None, max_length=1000)
 
 
+class MiniMaxConfigPatchRequest(StrictRequestModel):
+    model: str | None = Field(None, max_length=200)
+    api_url: str | None = Field(None, max_length=500)
+    timeout: float | None = Field(None, ge=1, le=300)
+    api_key: str | None = Field(None, max_length=1000)
+
+
+class ModelConfigPatchRequest(StrictRequestModel):
+    provider: str | None = Field(None, max_length=64)
+    minimax: MiniMaxConfigPatchRequest | None = None
+
+
 class SettingsPatchRequest(StrictRequestModel):
     auto_reply_enabled: bool | None = None
     reply_style: str | None = Field(None, max_length=64)
@@ -143,6 +157,7 @@ class SettingsPatchRequest(StrictRequestModel):
     request_timeout_seconds: float | None = Field(None, ge=1, le=300)
     retry_attempts: int | None = Field(None, ge=0, le=10)
     real_send_enabled: bool | None = None
+    llm_config: ModelConfigPatchRequest | None = Field(None, alias="model_config")
     embedding_config: EmbeddingConfigPatchRequest | None = None
     safety_policy: SafetyPolicyPatchRequest | None = None
 

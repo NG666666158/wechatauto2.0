@@ -1,12 +1,53 @@
 {
   "name": "wechat-ai-electron-shell",
   "private": true,
+  "version": "0.1.0-test",
+  "productName": "客户版微信自动回复桌面应用",
   "main": "main.cjs",
   "scripts": {
     "dev": "electron .",
-    "smoke:p7": "node tests/p7-shell-unit.mjs"
+    "smoke:p7": "node tests/p7-shell-unit.mjs",
+    "dist:win": "electron-builder --win --x64",
+    "pack:win": "electron-builder --win --x64 --dir"
+  },
+  "build": {
+    "appId": "com.wechatauto.desktop",
+    "productName": "客户版微信自动回复桌面应用",
+    "directories": {
+      "output": "../../dist/client"
+    },
+    "files": [
+      "**/*",
+      "!tests/**",
+      "!*.log"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend/out",
+        "to": "frontend/out"
+      },
+      {
+        "from": "../../dist/backend",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "forceCodeSigning": false,
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "devDependencies": {
+    "electron-builder": "^26.0.0",
     "electron": "^35.5.1"
   }
 }

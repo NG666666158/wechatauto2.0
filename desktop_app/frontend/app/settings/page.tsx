@@ -27,7 +27,10 @@ import {
   ChevronDown,
   Clock,
   DatabaseBackup,
+  Eye,
+  EyeOff,
   FileClock,
+  KeyRound,
   MessageSquare,
   Plus,
   Power,
@@ -40,6 +43,15 @@ import {
 
 const tabs = ["基础设置", "回复设置", "客户管理", "高级设置"] as const
 const replyStyles = ["专业友好", "自然轻松", "简洁高效"] as const
+const weekdayOptions = [
+  { value: "mon", label: "周一" },
+  { value: "tue", label: "周二" },
+  { value: "wed", label: "周三" },
+  { value: "thu", label: "周四" },
+  { value: "fri", label: "周五" },
+  { value: "sat", label: "周六" },
+  { value: "sun", label: "周日" },
+] as const
 
 const safetyRuleGroups = [
   {
@@ -303,13 +315,121 @@ function BaseSettings({
         desc="仅在工作时间自动运行回复流程"
         right={
           <div className="flex items-center gap-2">
+            <DaySelect
+              value={settings.work_hours.start_day || "mon"}
+              disabled={pending}
+              onChange={(value) => updateSettings({ work_hours: { ...settings.work_hours, start_day: value } })}
+            />
+            <span className="text-xs text-slate-400">到</span>
+            <DaySelect
+              value={settings.work_hours.end_day || "fri"}
+              disabled={pending}
+              onChange={(value) => updateSettings({ work_hours: { ...settings.work_hours, end_day: value } })}
+            />
+            <span className="mx-1 h-4 w-px bg-slate-200" />
             <TimeInput value={settings.work_hours.start} disabled={pending} onChange={(value) => updateSettings({ work_hours: { ...settings.work_hours, start: value } })} />
             <span className="text-xs text-slate-400">-</span>
             <TimeInput value={settings.work_hours.end} disabled={pending} onChange={(value) => updateSettings({ work_hours: { ...settings.work_hours, end: value } })} />
           </div>
         }
       />
+      <ModelSettings settings={settings} pending={pending} updateSettings={updateSettings} />
     </>
+  )
+}
+
+function ModelSettings({
+  settings,
+  pending,
+  updateSettings,
+}: {
+  settings: Settings
+  pending: boolean
+  updateSettings: (patch: SettingsPatch, successMessage?: string) => void
+}) {
+  const minimax = settings.model_config?.minimax
+  const [apiKey, setApiKey] = useState("")
+  const [showKey, setShowKey] = useState(false)
+  const configured = Boolean(minimax?.api_key_set)
+
+  useEffect(() => {
+    setApiKey("")
+  }, [minimax?.api_key_preview])
+
+  function saveModelConfig() {
+    const cleanedKey = apiKey.trim()
+    if (!cleanedKey) {
+      toast({
+        title: "请先填写 MiniMax API Key",
+        description: configured ? "如需保持当前密钥，不需要重复保存。" : "未配置时无法使用真实模型自动回复。",
+        variant: "destructive",
+        duration: 1800,
+      })
+      return
+    }
+    updateSettings(
+      {
+        model_config: {
+          provider: "minimax",
+          minimax: {
+            api_key: cleanedKey,
+            model: "MiniMax-M2.7",
+            api_url: minimax?.api_url || "https://api.minimaxi.com/v1/text/chatcompletion_v2",
+            timeout: minimax?.timeout || 30,
+          },
+        },
+      },
+      "大模型配置已保存",
+    )
+  }
+
+  return (
+    <SettingRow
+      iconBg={configured ? "bg-emerald-500" : "bg-amber-500"}
+      icon={<KeyRound className="h-5 w-5 text-white" />}
+      title="大模型配置"
+      desc={configured ? `MiniMax 已配置，当前模型 ${minimax?.model || "MiniMax-M2.7"}` : "未填写 API Key 时，无法使用真实模型自动回复"}
+      right={
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "hidden rounded-md px-2 py-1 text-xs font-medium lg:inline-flex",
+              configured ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
+            )}
+          >
+            {configured ? minimax?.api_key_preview || "已配置" : "未配置"}
+          </span>
+          <label className="flex h-9 w-[260px] items-center rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 focus-within:border-blue-400">
+            <input
+              type={showKey ? "text" : "password"}
+              value={apiKey}
+              disabled={pending}
+              placeholder={configured ? "输入新 Key 后保存" : "填写 MiniMax API Key"}
+              onChange={(event) => setApiKey(event.target.value)}
+              className="min-w-0 flex-1 bg-transparent outline-none disabled:opacity-60"
+            />
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setShowKey((value) => !value)}
+              className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-60"
+              aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
+              title={showKey ? "隐藏 API Key" : "显示 API Key"}
+            >
+              {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </label>
+          <button
+            type="button"
+            disabled={pending || !apiKey.trim()}
+            onClick={saveModelConfig}
+            className="inline-flex h-9 items-center rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            保存
+          </button>
+        </div>
+      }
+    />
   )
 }
 
@@ -924,6 +1044,23 @@ function SelectValue({
       {options.map((option) => (
         <option key={option} value={option}>
           {option}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function DaySelect({ value, disabled, onChange }: { value: string; disabled?: boolean; onChange: (value: string) => void }) {
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.value)}
+      className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-blue-400 disabled:opacity-60"
+    >
+      {weekdayOptions.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
         </option>
       ))}
     </select>

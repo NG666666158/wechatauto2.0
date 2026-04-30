@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.request
 from collections.abc import Callable
@@ -19,8 +20,18 @@ def _default_transport(url: str, headers: dict[str, str], payload: dict[str, obj
         headers=headers,
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    opener = (
+        urllib.request.build_opener()
+        if _use_system_proxy()
+        else urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    )
+    with opener.open(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _use_system_proxy() -> bool:
+    raw_value = os.getenv("MINIMAX_USE_SYSTEM_PROXY") or os.getenv("WECHAT_AI_USE_SYSTEM_PROXY") or ""
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 class MiniMaxProvider:

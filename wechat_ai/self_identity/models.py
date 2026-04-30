@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 @dataclass(slots=True)
 class GlobalSelfIdentityProfile:
     profile_id: str = "global"
-    display_name: str = ""
+    display_name: str = "陪聊机器人"
     identity_facts: list[str] = field(default_factory=list)
     constraints: list[str] = field(default_factory=list)
     style_hints: list[str] = field(default_factory=list)
@@ -46,4 +46,3 @@ class ResolvedSelfIdentityProfile:
     notes: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     summary: str = ""
-

@@ -26,6 +26,7 @@ from .memory.memory_store import MemoryStore
 from .message_queue import IncomingMessageEvent, MessageEventQueue
 from .minimax_provider import MiniMaxProvider
 from .models import Message
+from .orchestration.reply_formatter import format_reply_for_wechat
 from .orchestration.reply_pipeline import ReplyPipeline, ScenePrompts
 from . import paths
 from .paths import KNOWLEDGE_DIR, LOGS_DIR, MEMORY_DIR, bootstrap_data_dirs
@@ -453,7 +454,7 @@ class WeChatAIApp:
                     context=contexts,
                 )
             )
-            return reply or self.fallback_reply
+            return format_reply_for_wechat(reply) or self.fallback_reply
         except Exception as exc:
             self._debug(f"friend_callback failed error={type(exc).__name__}: {exc}")
             self._log_event(
@@ -483,7 +484,7 @@ class WeChatAIApp:
                     context=contexts,
                 )
             )
-            return reply or self.fallback_reply
+            return format_reply_for_wechat(reply) or self.fallback_reply
         except Exception as exc:
             self._debug(f"group_callback failed error={type(exc).__name__}: {exc}")
             self._log_event(
@@ -870,7 +871,7 @@ class WeChatAIApp:
                     identity_evidence=list(identity_result.evidence),
                 )
             )
-            reply = reply or self.fallback_reply
+            reply = format_reply_for_wechat(reply) or self.fallback_reply
         except Exception as exc:
             self._debug(f"_send_reply failed session={session_name!r} error={type(exc).__name__}: {exc}")
             self._log_event(

@@ -147,6 +147,8 @@ class DashboardSummaryData(BaseModel):
 
 class WorkHoursData(BaseModel):
     enabled: bool = True
+    start_day: str = "mon"
+    end_day: str = "fri"
     start: str = "09:00"
     end: str = "18:00"
 
@@ -212,8 +214,22 @@ class SettingsData(BaseModel):
     request_timeout_seconds: float = 30.0
     retry_attempts: int = 2
     real_send_enabled: bool = False
+    llm_config: "ModelConfigData" = Field(default_factory=lambda: ModelConfigData(), alias="model_config")
     embedding_config: "EmbeddingConfigData" = Field(default_factory=lambda: EmbeddingConfigData())
     safety_policy: SafetyPolicyConfigData = Field(default_factory=SafetyPolicyConfigData)
+
+
+class MiniMaxConfigData(BaseModel):
+    model: str = "MiniMax-M2.7"
+    api_url: str = "https://api.minimaxi.com/v1/text/chatcompletion_v2"
+    timeout: float = 30.0
+    api_key_set: bool = False
+    api_key_preview: str = ""
+
+
+class ModelConfigData(BaseModel):
+    provider: str = "minimax"
+    minimax: MiniMaxConfigData = Field(default_factory=MiniMaxConfigData)
 
 
 class EmbeddingConfigData(BaseModel):

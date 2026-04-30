@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import sys
 import time
 import types
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 from pathlib import Path
 from uuid import uuid4
@@ -20,7 +22,7 @@ TMP_ROOT.mkdir(exist_ok=True)
 from wechat_ai.context import build_context_window  # type: ignore  # noqa: E402
 from wechat_ai.logging_utils import JsonlEventLogger, tail_jsonl_events  # type: ignore  # noqa: E402
 from wechat_ai.memory.memory_store import MemoryStore  # type: ignore  # noqa: E402
-from wechat_ai.minimax_provider import MiniMaxProvider  # type: ignore  # noqa: E402
+from wechat_ai.minimax_provider import MiniMaxProvider, _use_system_proxy  # type: ignore  # noqa: E402
 from wechat_ai.reply_engine import ReplyEngine, ScenePrompts  # type: ignore  # noqa: E402
 
 
@@ -142,6 +144,15 @@ class ReplyEngineTests(unittest.TestCase):
 
         self.assertEqual(reply, "retry-success")
         self.assertEqual(len(calls), 2)
+
+    def test_minimax_provider_ignores_system_proxy_unless_enabled(self) -> None:
+        with patch.dict(os.environ, {"HTTP_PROXY": "http://127.0.0.1:9", "HTTPS_PROXY": "http://127.0.0.1:9"}, clear=False):
+            os.environ.pop("MINIMAX_USE_SYSTEM_PROXY", None)
+            os.environ.pop("WECHAT_AI_USE_SYSTEM_PROXY", None)
+            self.assertFalse(_use_system_proxy())
+
+            os.environ["MINIMAX_USE_SYSTEM_PROXY"] = "1"
+            self.assertTrue(_use_system_proxy())
 
     def test_reply_engine_uses_scene_specific_prompts_and_context(self) -> None:
         calls: list[dict[str, str]] = []

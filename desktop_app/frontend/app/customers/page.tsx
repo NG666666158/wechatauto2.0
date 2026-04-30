@@ -93,7 +93,7 @@ export default function CustomersPage() {
       .filter(Boolean)
     try {
       const response = await apiClient.updateGlobalSelfIdentity({
-        display_name: selfName.trim() || "未命名身份",
+        display_name: selfName.trim() || "陪聊机器人",
         identity_facts: facts,
       })
       if (!response.success || !response.data) {
@@ -486,7 +486,7 @@ function SelfIdentityCard({
           <input
             value={name}
             onChange={(event) => onNameChange(event.target.value)}
-            placeholder={identity?.display_name || "例如：碱水"}
+            placeholder={identity?.display_name || "例如：陪聊机器人"}
             className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-blue-400 focus:outline-none"
           />
         </label>

@@ -21,7 +21,7 @@ def get_settings(request: Request) -> dict[str, object]:
 
 @router.patch("", response_model=ApiResponse[SettingsData])
 def update_settings(patch: SettingsPatchRequest, request: Request) -> dict[str, object]:
-    patch_data = patch.model_dump(exclude_none=True)
+    patch_data = patch.model_dump(exclude_none=True, by_alias=True)
     data = _to_dict(
         desktop_service(request).update_settings(
             patch_data,
@@ -75,7 +75,14 @@ def restore_default_safety_policy(request: Request) -> dict[str, object]:
 
 def _to_dict(value: Any) -> dict[str, Any]:
     if is_dataclass(value):
-        return asdict(value)
+        payload = asdict(value)
+        model_config = getattr(value, "model_config", None)
+        if model_config is not None and hasattr(model_config, "to_dict"):
+            payload["model_config"] = model_config.to_dict()
+        embedding_config = getattr(value, "embedding_config", None)
+        if embedding_config is not None and hasattr(embedding_config, "to_dict"):
+            payload["embedding_config"] = embedding_config.to_dict()
+        return payload
     if isinstance(value, dict):
         return dict(value)
     return {}

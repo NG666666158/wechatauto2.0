@@ -115,10 +115,7 @@ class _SubprocessDaemonRunner:
                 stop_file.write_text("", encoding="utf-8")
             except Exception:
                 pass
-        runtime_args = [
-            "py",
-            "-3",
-            "scripts\\run_minimax_global_auto_reply.py",
+        runtime_args = self._runtime_command(
             "--forever",
             "--poll-interval",
             str(poll_interval),
@@ -130,7 +127,7 @@ class _SubprocessDaemonRunner:
             str(force_stop_hotkey or "off"),
             "--force-stop-file",
             str(stop_file),
-        ]
+        )
         if not run_silently:
             runtime_args.append("--debug")
         escaped_project_root = str(self.project_root).replace("'", "''")
@@ -230,9 +227,7 @@ class _SubprocessDaemonRunner:
         force_stop_hotkey: str,
         run_silently: bool,
     ) -> subprocess.Popen[str]:
-        command = [
-            sys.executable,
-            str(self.project_root / "scripts" / "emergency_stop_watchdog.py"),
+        command = self._watchdog_command(
             "--target-pid",
             str(target_pid),
             "--stop-file",
@@ -241,7 +236,7 @@ class _SubprocessDaemonRunner:
             str(force_stop_hotkey or "off"),
             "--log-file",
             str(self.project_root / "wechat_ai" / "data" / "logs" / "emergency_stop_watchdog.log"),
-        ]
+        )
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
         stdout_target: Any = subprocess.DEVNULL if run_silently else None
         stderr_target: Any = subprocess.DEVNULL if run_silently else None
@@ -253,6 +248,16 @@ class _SubprocessDaemonRunner:
             stderr=stderr_target,
             text=True,
         )
+
+    def _runtime_command(self, *args: str) -> list[str]:
+        if getattr(sys, "frozen", False):
+            return [sys.executable, "--run-auto-reply", *args]
+        return ["py", "-3", "scripts\\run_minimax_global_auto_reply.py", *args]
+
+    def _watchdog_command(self, *args: str) -> list[str]:
+        if getattr(sys, "frozen", False):
+            return [sys.executable, "--emergency-stop-watchdog", *args]
+        return [sys.executable, str(self.project_root / "scripts" / "emergency_stop_watchdog.py"), *args]
 
     def _stop_watchdog(self, pid: int) -> None:
         watchdog = self._watchdogs.pop(pid, None)
@@ -354,6 +359,10 @@ class DesktopAppService:
     def get_settings(self):
         return self.settings_store.load()
 
+    def model_configured(self) -> bool:
+        settings = self.get_settings()
+        return bool(settings.model_config.configured())
+
     def update_settings(
         self,
         patch: Mapping[str, object],
@@ -411,6 +420,8 @@ class DesktopAppService:
 
     def start_daemon(self) -> dict[str, object]:
         settings = self.get_settings()
+        if not settings.model_config.configured():
+            raise ValueError("请先在设置页填写 MiniMax API Key，才能启动真实模型自动回复。")
         self._clear_force_stop_flag()
         stop_event = threading.Event()
         self._daemon_stop_event = stop_event
@@ -458,10 +469,7 @@ class DesktopAppService:
         wait_for_ui_ready_before_guardian: bool,
     ) -> dict[str, object]:
         project_root = paths.ROOT.parent
-        script_path = project_root / "scripts" / "bootstrap_wechat_first_run.py"
-        command = [
-            sys.executable,
-            str(script_path),
+        command = self._bootstrap_probe_command(
             "--no-start-guardian",
             "--ready-timeout",
             str(max(float(ready_timeout_seconds), 0.0)),
@@ -469,7 +477,7 @@ class DesktopAppService:
             str(max(float(poll_interval_seconds), 0.1)),
             "--narrator-settle-seconds",
             str(max(float(narrator_settle_seconds), 0.0)),
-        ]
+        )
         if wait_for_ui_ready_before_guardian:
             command.append("--wait-for-ui-ready")
 
@@ -528,6 +536,11 @@ class DesktopAppService:
             "" if bool(payload.get("ok")) else str(payload.get("message") or "bootstrap process failed"),
         )
         return payload
+
+    def _bootstrap_probe_command(self, *args: str) -> list[str]:
+        if getattr(sys, "frozen", False):
+            return [sys.executable, "--bootstrap-wechat-probe", *args]
+        return [sys.executable, "-m", "wechat_ai.app.bootstrap_probe_runner", *args]
 
     def _bootstrap_process_environment(self, ui_ready: bool, reason: str) -> dict[str, object]:
         return {
@@ -899,7 +912,7 @@ class DesktopAppService:
     def send_reply(self, conversation_id: str, text: str) -> dict[str, object]:
         preflight = self.validate_send_reply(conversation_id, text)
         if not preflight["allowed"]:
-            return {
+            response: dict[str, object] = {
                 "status": "blocked",
                 "action": "send_reply",
                 "allowed": False,
@@ -908,11 +921,33 @@ class DesktopAppService:
                 "reason_code": str(preflight["reason_code"]),
                 "reason": str(preflight["reason"]),
             }
+            if self.reply_sender is not None or self.get_settings().real_send_enabled:
+                response["send_job_id"] = self._record_blocked_send_job(
+                    conversation_id=conversation_id,
+                    text=text,
+                    reason_code=str(preflight["reason_code"]),
+                    reason=str(preflight["reason"]),
+                    action="send_reply",
+                ).get("send_job_id")
+            return response
         cleaned_text = str(text).strip()
         settings = self.get_settings()
         if settings.real_send_enabled:
             fake_embeddings_precheck = self._precheck_trusted_knowledge_embeddings()
             if not fake_embeddings_precheck["ok"]:
+                blocked_job = self._record_blocked_send_job(
+                    conversation_id=conversation_id,
+                    text=cleaned_text,
+                    reason_code=str(fake_embeddings_precheck["reason_code"]),
+                    reason=str(fake_embeddings_precheck["reason"]),
+                    action="send_reply",
+                    extra={
+                        "knowledge_trust_status": str(fake_embeddings_precheck.get("knowledge_trust_status") or "unknown"),
+                        "knowledge_trust_reason": str(fake_embeddings_precheck.get("knowledge_trust_reason") or ""),
+                        "embedding_provider": fake_embeddings_precheck.get("embedding_provider"),
+                        "embedding_trusted": bool(fake_embeddings_precheck.get("embedding_trusted", False)),
+                    },
+                )
                 return {
                     "status": "blocked",
                     "action": "send_reply",
@@ -925,6 +960,7 @@ class DesktopAppService:
                     "knowledge_trust_reason": str(fake_embeddings_precheck.get("knowledge_trust_reason") or ""),
                     "embedding_provider": fake_embeddings_precheck.get("embedding_provider"),
                     "embedding_trusted": bool(fake_embeddings_precheck.get("embedding_trusted", False)),
+                    "send_job_id": blocked_job.get("send_job_id"),
                 }
         sender = self.reply_sender
         if sender is None and settings.real_send_enabled:
@@ -938,6 +974,13 @@ class DesktopAppService:
                 has_unresolved_uncertain_send=self.runtime_state_store.conversation_has_unresolved_uncertain_send(normalized_id),
             )
             if not coordinator_precheck["ok"]:
+                blocked_job = self._record_blocked_send_job(
+                    conversation_id=normalized_id,
+                    text=cleaned_text,
+                    reason_code=str(coordinator_precheck["reason_code"]),
+                    reason=str(coordinator_precheck["reason"]),
+                    action="send_reply",
+                )
                 return {
                     "status": "blocked",
                     "action": "send_reply",
@@ -946,6 +989,7 @@ class DesktopAppService:
                     "text": cleaned_text,
                     "reason_code": str(coordinator_precheck["reason_code"]),
                     "reason": str(coordinator_precheck["reason"]),
+                    "send_job_id": blocked_job.get("send_job_id"),
                 }
             is_group = _conversation_chat_type(conversation_id) == "group"
             reply_job = self.runtime_state_store.create_reply_job(
@@ -978,6 +1022,92 @@ class DesktopAppService:
             "reason": "",
         }
 
+    def _record_blocked_send_job(
+        self,
+        *,
+        conversation_id: str,
+        text: str,
+        reason_code: str,
+        reason: str,
+        action: str,
+        reply_job: Mapping[str, object] | None = None,
+        extra: Mapping[str, object] | None = None,
+    ) -> dict[str, object]:
+        normalized_id = str(conversation_id).strip()
+        cleaned_text = str(text).strip()
+        safe_reason_code = str(reason_code).strip() or "SEND_BLOCKED"
+        safe_reason = str(reason).strip()
+        source = f"desktop_{action}_blocked"
+        if reply_job is None:
+            reply_job = self.runtime_state_store.create_reply_job(
+                conversation_id=normalized_id,
+                trigger_event_ids=[
+                    RuntimeStateStore.message_signature(
+                        conversation_id=normalized_id,
+                        sender_name="send_precheck",
+                        content=f"{safe_reason_code}:{cleaned_text}",
+                        source=source,
+                    )
+                ],
+                input_text=cleaned_text,
+                draft_reply=cleaned_text,
+                status="BLOCKED",
+                risk_level="MEDIUM",
+                need_human_review=True,
+                reason_codes=[safe_reason_code],
+                metadata={
+                    "source": source,
+                    "action": action,
+                    "reason_code": safe_reason_code,
+                    "reason": safe_reason,
+                },
+                idempotency_key=RuntimeStateStore.message_signature(
+                    conversation_id=normalized_id,
+                    sender_name="blocked_reply_job",
+                    content=f"{action}:{safe_reason_code}:{cleaned_text}",
+                    source=source,
+                ),
+            )
+
+        reply_job_id = str(reply_job.get("reply_job_id") or "").strip()
+        send_job = self.runtime_state_store.create_send_job(
+            reply_job_id=reply_job_id,
+            conversation_id=normalized_id,
+            target_title=_conversation_title(normalized_id),
+            content=cleaned_text,
+            status="SEND_UNCERTAIN",
+            idempotency_key=RuntimeStateStore.message_signature(
+                conversation_id=normalized_id,
+                sender_name="blocked_send_job",
+                content=f"{reply_job_id}:{action}:{safe_reason_code}:{cleaned_text}",
+                source=source,
+            ),
+        )
+        send_job_id = str(send_job.get("send_job_id") or "")
+        if send_job_id and not self.runtime_state_store.list_send_attempts(send_job_id, limit=1):
+            attempt = self.runtime_state_store.create_send_attempt(send_job_id, status="SEND_BLOCKED")
+            self.runtime_state_store.finish_send_attempt(
+                str(attempt["attempt_id"]),
+                status="SEND_BLOCKED",
+                error_code=safe_reason_code,
+                error_message=safe_reason,
+            )
+
+        confirmation_result: dict[str, object] = {
+            "ok": False,
+            "source": "send_preflight",
+            "phase": "blocked_before_send",
+            "action": action,
+            "reason_code": safe_reason_code,
+            "reason": safe_reason,
+        }
+        confirmation_result.update(dict(extra or {}))
+        return self.runtime_state_store.mark_send_job(
+            send_job_id,
+            status="SEND_UNCERTAIN",
+            confirmation_result=confirmation_result,
+        )
+
     def _send_approved_reply_job(
         self,
         *,
@@ -992,6 +1122,14 @@ class DesktopAppService:
         cleaned_text = str(text).strip()
         preflight = self.validate_send_reply(normalized_id, cleaned_text, skip_safety=skip_safety)
         if not preflight["allowed"]:
+            blocked_job = self._record_blocked_send_job(
+                conversation_id=normalized_id,
+                text=cleaned_text,
+                reason_code=str(preflight["reason_code"]),
+                reason=str(preflight["reason"]),
+                action=action,
+                reply_job=reply_job,
+            )
             return {
                 "status": "blocked",
                 "action": action,
@@ -1000,11 +1138,26 @@ class DesktopAppService:
                 "text": cleaned_text,
                 "reason_code": str(preflight["reason_code"]),
                 "reason": str(preflight["reason"]),
+                "send_job_id": blocked_job.get("send_job_id"),
             }
         settings = self.get_settings()
         if settings.real_send_enabled:
             knowledge_precheck = self._precheck_trusted_knowledge_embeddings()
             if not knowledge_precheck["ok"]:
+                blocked_job = self._record_blocked_send_job(
+                    conversation_id=normalized_id,
+                    text=cleaned_text,
+                    reason_code=str(knowledge_precheck["reason_code"]),
+                    reason=str(knowledge_precheck["reason"]),
+                    action=action,
+                    reply_job=reply_job,
+                    extra={
+                        "knowledge_trust_status": str(knowledge_precheck.get("knowledge_trust_status") or "unknown"),
+                        "knowledge_trust_reason": str(knowledge_precheck.get("knowledge_trust_reason") or ""),
+                        "embedding_provider": knowledge_precheck.get("embedding_provider"),
+                        "embedding_trusted": bool(knowledge_precheck.get("embedding_trusted", False)),
+                    },
+                )
                 return {
                     "status": "blocked",
                     "action": action,
@@ -1017,11 +1170,20 @@ class DesktopAppService:
                     "knowledge_trust_reason": str(knowledge_precheck.get("knowledge_trust_reason") or ""),
                     "embedding_provider": knowledge_precheck.get("embedding_provider"),
                     "embedding_trusted": bool(knowledge_precheck.get("embedding_trusted", False)),
+                    "send_job_id": blocked_job.get("send_job_id"),
                 }
         coordinator_precheck = evaluate_send_coordinator_precheck(
             has_unresolved_uncertain_send=self.runtime_state_store.conversation_has_unresolved_uncertain_send(normalized_id),
         )
         if not coordinator_precheck["ok"]:
+            blocked_job = self._record_blocked_send_job(
+                conversation_id=normalized_id,
+                text=cleaned_text,
+                reason_code=str(coordinator_precheck["reason_code"]),
+                reason=str(coordinator_precheck["reason"]),
+                action=action,
+                reply_job=reply_job,
+            )
             return {
                 "status": "blocked",
                 "action": action,
@@ -1030,6 +1192,7 @@ class DesktopAppService:
                 "text": cleaned_text,
                 "reason_code": str(coordinator_precheck["reason_code"]),
                 "reason": str(coordinator_precheck["reason"]),
+                "send_job_id": blocked_job.get("send_job_id"),
             }
         is_group = _conversation_chat_type(normalized_id) == "group"
         coordinator = SendCoordinator(
@@ -1408,13 +1571,14 @@ class DesktopAppService:
             messages = record.get("messages", [])
             latest = messages[-1] if isinstance(messages, list) and messages else {}
             updated_at = str(latest.get("sent_at", "")) if isinstance(latest, dict) else None
+            message_count = len(messages) if isinstance(messages, list) else int(record.get("unread_count", 0))
             items.append(
                 ConversationListItem(
                     conversation_id=conversation_id,
                     title=str(record.get("title", "")) or _conversation_title(conversation_id),
                     is_group=bool(record.get("is_group", conversation_id.startswith("group:"))),
                     latest_message=str(latest.get("text", "")) if isinstance(latest, dict) else "",
-                    unread_count=int(record.get("unread_count", 0)),
+                    unread_count=message_count,
                     updated_at=updated_at,
                 )
             )
@@ -1433,7 +1597,7 @@ class DesktopAppService:
             title=str(record.get("title", "")) or _conversation_title(normalized_id),
             is_group=bool(record.get("is_group", normalized_id.startswith("group:"))),
             latest_message=str(messages[-1].get("text", "")) if messages else "",
-            unread_count=int(record.get("unread_count", 0)),
+            unread_count=len(messages),
             updated_at=str(messages[-1].get("sent_at", "")) if messages else None,
         )
         return {
@@ -2142,7 +2306,17 @@ class DesktopAppService:
 
     def _normalized_daemon_status(self) -> dict[str, object]:
         status = self.daemon_controller.load_status()
-        if status.pid is not None and not self.daemon_runner.is_running(status.pid):
+        default_stop_file = self.app_dir / "force_stop.flag"
+        force_stop_requested = False
+        try:
+            force_stop_requested = default_stop_file.exists() and default_stop_file.read_text(encoding="utf-8").strip().lower() == "stop"
+        except OSError:
+            force_stop_requested = False
+        if force_stop_requested:
+            status = self.daemon_controller.stop(now=datetime.now(timezone.utc))
+        elif status.pid is not None and not self.daemon_runner.is_running(status.pid):
+            status = self.daemon_controller.stop(now=datetime.now(timezone.utc))
+        elif status.state == "running" and _daemon_heartbeat_stale(status):
             status = self.daemon_controller.stop(now=datetime.now(timezone.utc))
         return asdict(status)
 
@@ -2271,6 +2445,17 @@ def _build_hybrid_retriever(index_path: Path) -> HybridRetriever:
         dense_retriever=LocalIndexRetriever(index_path=index_path, embeddings=FakeEmbeddings()),
         keyword_retriever=KeywordRetriever(index_path=index_path),
     )
+
+
+def _daemon_heartbeat_stale(status: object, *, stale_seconds: float = 180.0) -> bool:
+    now = datetime.now(timezone.utc).timestamp()
+    heartbeat = _parse_event_timestamp(getattr(status, "last_heartbeat", None))
+    if heartbeat is not None:
+        return now - heartbeat > stale_seconds
+    started_at = _parse_event_timestamp(getattr(status, "last_started_at", None))
+    if started_at is None:
+        return False
+    return now - started_at > stale_seconds
 
 
 def _windows_pid_exists(pid: int | None) -> bool:
@@ -2405,7 +2590,7 @@ def _local_day_from_timestamp(value: str) -> str:
 
 
 def _is_wechat_running() -> bool:
-    return is_process_running("Weixin.exe") or is_process_running("WeChat.exe")
+    return any(is_process_running(name) for name in ("Weixin.exe", "WeChat.exe", "WeChatAppEx.exe"))
 
 
 def _extract_bootstrap_status_lines(stdout: str) -> list[str]:

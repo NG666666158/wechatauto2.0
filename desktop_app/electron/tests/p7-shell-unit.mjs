@@ -9,6 +9,7 @@ const require = createRequire(import.meta.url)
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const backend = require(join(__dirname, "..", "backend-controller.cjs"))
+const frontendProtocol = require(join(__dirname, "..", "frontend-protocol.cjs"))
 const lifecycle = require(join(__dirname, "..", "lifecycle-controller.cjs"))
 const shell = require(join(__dirname, "..", "shell-controller.cjs"))
 const preferences = require(join(__dirname, "..", "shell-preferences.cjs"))
@@ -17,6 +18,8 @@ const diagnostics = require(join(__dirname, "..", "window-diagnostics.cjs"))
 
 await testReuseExistingBackend()
 await testSpawnManagedBackendUntilHealthy()
+testSpawnBackendVisibleUsesForegroundOptions()
+testSpawnBackendPrefersPackagedExeWhenAvailable()
 await testShutdownStopsRuntimeAndManagedBackend()
 testWindowCloseHidesWithoutQuitting()
 await testLoadShellStateNormalizesPreferences()
@@ -27,6 +30,7 @@ testShellPreferencesPersistAndSyncLaunchAtLogin()
 testWindowVisibilityShowsOnDidFinishLoad()
 testWindowVisibilityFallbackShowsWindow()
 testWindowDiagnosticsCapturesLoadFailure()
+testPackagedFrontendProtocolPathResolution()
 
 console.log("P7 shell unit tests passed")
 
@@ -75,6 +79,50 @@ async function testSpawnManagedBackendUntilHealthy() {
   assert.equal(session.managed, true)
   assert.equal(session.reused, false)
   assert.equal(session.child, child)
+}
+
+function testSpawnBackendVisibleUsesForegroundOptions() {
+  const calls = []
+  backend.spawnBackendProcess({
+    repoRoot: "C:\\project",
+    host: "127.0.0.1",
+    port: 8765,
+    visible: true,
+    pythonCommand: ["python"],
+    spawnFn: (command, args, options) => {
+      calls.push({ command, args, options })
+      return { killed: false, kill() {} }
+    },
+  })
+
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].command, "python")
+  assert.equal(calls[0].options.windowsHide, false)
+  assert.equal(calls[0].options.stdio, "inherit")
+  assert.equal(calls[0].options.env.PYTHONIOENCODING, "utf-8")
+}
+
+function testSpawnBackendPrefersPackagedExeWhenAvailable() {
+  const tempBaseDir = fs.mkdtempSync(join(os.tmpdir(), "wechat-ai-backend-exe-"))
+  const exePath = join(tempBaseDir, "wechat-ai-backend.exe")
+  fs.writeFileSync(exePath, "")
+  const calls = []
+
+  backend.spawnBackendProcess({
+    repoRoot: "C:\\project",
+    backendExePath: exePath,
+    dataRoot: "C:\\data",
+    visible: true,
+    spawnFn: (command, args, options) => {
+      calls.push({ command, args, options })
+      return { killed: false, kill() {} }
+    },
+  })
+
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].command, exePath)
+  assert.deepEqual(calls[0].args, ["--host", "127.0.0.1", "--port", "8765", "--log-level", "info", "--data-dir", "C:\\data"])
+  assert.equal(calls[0].options.env.WECHAT_AI_DATA_DIR, "C:\\data")
 }
 
 async function testShutdownStopsRuntimeAndManagedBackend() {
@@ -343,4 +391,17 @@ function testWindowDiagnosticsCapturesLoadFailure() {
       },
     ],
   ])
+}
+
+function testPackagedFrontendProtocolPathResolution() {
+  const tempBaseDir = fs.mkdtempSync(join(os.tmpdir(), "wechat-ai-frontend-"))
+  fs.mkdirSync(join(tempBaseDir, "_next", "static"), { recursive: true })
+  fs.writeFileSync(join(tempBaseDir, "index.html"), "")
+  fs.writeFileSync(join(tempBaseDir, "messages.html"), "")
+  fs.writeFileSync(join(tempBaseDir, "_next", "static", "app.js"), "")
+
+  assert.equal(frontendProtocol.resolveFrontendFile(tempBaseDir, "/"), join(tempBaseDir, "index.html"))
+  assert.equal(frontendProtocol.resolveFrontendFile(tempBaseDir, "/messages"), join(tempBaseDir, "messages.html"))
+  assert.equal(frontendProtocol.resolveFrontendFile(tempBaseDir, "/_next/static/app.js"), join(tempBaseDir, "_next", "static", "app.js"))
+  assert.equal(frontendProtocol.resolveFrontendFile(tempBaseDir, "/missing"), join(tempBaseDir, "index.html"))
 }

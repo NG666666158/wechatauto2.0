@@ -45,7 +45,10 @@ class RuntimeManager:
                 status_code=409,
             )
 
-        daemon = self.desktop_service.start_daemon()
+        try:
+            daemon = self.desktop_service.start_daemon()
+        except ValueError as exc:
+            raise ApiError(ErrorCode.CONFIG_INVALID, str(exc), status_code=400) from exc
         return {
             "state": str(daemon.get("state", "running")),
             "mode": normalized_mode,
@@ -94,7 +97,10 @@ class RuntimeManager:
                 status_code=409,
             )
 
-        daemon = self.desktop_service.start_daemon()
+        try:
+            daemon = self.desktop_service.start_daemon()
+        except ValueError as exc:
+            raise ApiError(ErrorCode.CONFIG_INVALID, str(exc), status_code=400) from exc
         return {
             "state": str(daemon.get("state", "running")),
             "mode": normalized_mode,
@@ -136,13 +142,6 @@ class RuntimeManager:
             narrator_settle_seconds=narrator_settle_seconds,
             wait_for_ui_ready_before_guardian=wait_for_ui_ready_before_guardian,
         )
-        if not bool(bootstrap.get("ok")):
-            raise ApiError(
-                ErrorCode.WECHAT_WINDOW_NOT_FOUND,
-                str(bootstrap.get("message") or "WeChat bootstrap did not reach ready state"),
-                detail=bootstrap,
-                status_code=409,
-            )
 
         daemon = self.desktop_service.get_daemon_status()
         return {

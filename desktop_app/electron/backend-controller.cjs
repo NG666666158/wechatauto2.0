@@ -1,6 +1,8 @@
 const http = require("node:http")
 const https = require("node:https")
 const { spawn } = require("node:child_process")
+const fs = require("node:fs")
+const path = require("node:path")
 
 function buildBackendBaseUrl(options = {}) {
   const host = String(options.host || "127.0.0.1")
@@ -86,6 +88,25 @@ function spawnBackendProcess(options = {}) {
   const repoRoot = options.repoRoot
   const host = String(options.host || "127.0.0.1")
   const port = Number(options.port || 8765)
+  const visible = options.visible === undefined
+    ? process.env.WECHAT_AI_BACKEND_VISIBLE === "1"
+    : Boolean(options.visible)
+  const backendExePath = resolveBackendExePath(options)
+  const dataRoot = options.dataRoot ? String(options.dataRoot) : process.env.WECHAT_AI_DATA_DIR
+
+  if (backendExePath) {
+    return (options.spawnFn || spawn)(
+      backendExePath,
+      ["--host", host, "--port", String(port), "--log-level", "info", ...(dataRoot ? ["--data-dir", dataRoot] : [])],
+      {
+        cwd: path.dirname(backendExePath),
+        windowsHide: !visible,
+        stdio: visible ? "inherit" : "ignore",
+        env: buildBackendEnv(dataRoot),
+      },
+    )
+  }
+
   const pythonCommand = Array.isArray(options.pythonCommand) && options.pythonCommand.length
     ? options.pythonCommand
     : ["py", "-3"]
@@ -103,9 +124,43 @@ function spawnBackendProcess(options = {}) {
 
   return (options.spawnFn || spawn)(command, args, {
     cwd: repoRoot,
-    windowsHide: true,
-    stdio: "ignore",
+    windowsHide: !visible,
+    stdio: visible ? "inherit" : "ignore",
+    env: buildBackendEnv(dataRoot),
   })
+}
+
+function buildBackendEnv(dataRoot) {
+  return {
+    ...process.env,
+    ...(dataRoot ? { WECHAT_AI_DATA_DIR: String(dataRoot) } : {}),
+    PYTHONIOENCODING: "utf-8",
+  }
+}
+
+function resolveBackendExePath(options = {}) {
+  const candidates = []
+  if (options.backendExePath) {
+    candidates.push(String(options.backendExePath))
+  }
+  if (process.env.WECHAT_AI_BACKEND_EXE) {
+    candidates.push(process.env.WECHAT_AI_BACKEND_EXE)
+  }
+  if (options.resourcesPath) {
+    candidates.push(path.join(String(options.resourcesPath), "backend", "wechat-ai-backend", "wechat-ai-backend.exe"))
+    candidates.push(path.join(String(options.resourcesPath), "backend", "wechat-ai-backend.exe"))
+  }
+  if (options.repoRoot) {
+    candidates.push(path.join(String(options.repoRoot), "dist", "backend", "wechat-ai-backend", "wechat-ai-backend.exe"))
+  }
+
+  return candidates.find((candidate) => {
+    try {
+      return fs.existsSync(candidate)
+    } catch {
+      return false
+    }
+  }) || ""
 }
 
 async function ensureBackendSession(options = {}) {
@@ -261,6 +316,7 @@ module.exports = {
   pauseRuntimeViaApi,
   probeBackend,
   requestJson,
+  resolveBackendExePath,
   shutdownManagedBackend,
   spawnBackendProcess,
   startRuntimeViaApi,

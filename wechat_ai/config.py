@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,19 +22,46 @@ SUPPORTED_EMBEDDING_PROVIDERS = frozenset({"fake", "trusted_local", "openai_comp
 @dataclass(slots=True)
 class MiniMaxSettings:
     api_key: str
-    model: str = "MiniMax-M2.5"
+    model: str = "MiniMax-M2.7"
     api_url: str = "https://api.minimaxi.com/v1/text/chatcompletion_v2"
     timeout: int = 30
 
     @classmethod
     def from_env(cls) -> "MiniMaxSettings":
-        api_key = os.getenv("MINIMAX_API_KEY", "").strip()
+        file_config = _load_desktop_minimax_config()
+        api_key = os.getenv("MINIMAX_API_KEY", "").strip() or str(file_config.get("api_key", "")).strip()
         if not api_key:
             raise ValueError("MINIMAX_API_KEY is required")
-        model = os.getenv("MINIMAX_MODEL", "MiniMax-M2.5").strip() or "MiniMax-M2.5"
-        api_url = os.getenv("MINIMAX_API_URL", "https://api.minimaxi.com/v1/text/chatcompletion_v2").strip()
-        timeout = int(os.getenv("MINIMAX_TIMEOUT", "30"))
+        model = os.getenv("MINIMAX_MODEL", "").strip() or str(file_config.get("model", "")).strip() or "MiniMax-M2.7"
+        api_url = (
+            os.getenv("MINIMAX_API_URL", "").strip()
+            or str(file_config.get("api_url", "")).strip()
+            or "https://api.minimaxi.com/v1/text/chatcompletion_v2"
+        )
+        timeout = int(os.getenv("MINIMAX_TIMEOUT", "").strip() or file_config.get("timeout", 30) or 30)
         return cls(api_key=api_key, model=model, api_url=api_url, timeout=timeout)
+
+
+def _load_desktop_minimax_config() -> dict[str, object]:
+    data_dir = os.getenv("WECHAT_AI_DATA_DIR", "").strip()
+    if not data_dir:
+        return {}
+    settings_path = Path(data_dir).expanduser() / "app" / "desktop_settings.json"
+    if not settings_path.exists():
+        return {}
+    try:
+        payload = json.loads(settings_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    model_config = payload.get("model_config")
+    if not isinstance(model_config, dict):
+        return {}
+    if str(model_config.get("provider", "minimax")).strip().lower() != "minimax":
+        return {}
+    minimax = model_config.get("minimax")
+    return dict(minimax) if isinstance(minimax, dict) else {}
 
 
 def _env_flag(name: str, default: bool) -> bool:

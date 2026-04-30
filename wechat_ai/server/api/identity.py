@@ -42,5 +42,10 @@ def generate_global_self_identity(payload: SelfIdentityGenerateRequest, request:
         code = ErrorCode.CONFIG_INVALID if "MINIMAX_API_KEY" in message else ErrorCode.MODEL_API_FAILED
         raise ApiError(code, message, status_code=400) from exc
     except Exception as exc:
-        raise ApiError(ErrorCode.MODEL_API_FAILED, "自我身份 AI 生成失败，请检查大模型配置或稍后重试。", status_code=502) from exc
+        raise ApiError(
+            ErrorCode.MODEL_API_FAILED,
+            "自我身份 AI 生成失败，请检查大模型配置或稍后重试。",
+            detail=str(exc),
+            status_code=502,
+        ) from exc
     return success_response(data, trace_id=request.state.trace_id)

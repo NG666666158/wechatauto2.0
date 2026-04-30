@@ -70,6 +70,21 @@ const REASON_CODE_CATALOG: Record<string, ReasonCatalogItem> = {
     description: "回复依赖的知识库上下文来源或嵌入可信度不足。",
     action: "建议操作：先核对原始资料，必要时重建可信知识库。",
   },
+  UNRESOLVED_SEND_UNCERTAIN: {
+    label: "已有未确认发送",
+    description: "当前会话已有发送结果未确认，为避免重复发送，后续回复已拦截并等待人工检查。",
+    action: "建议操作：先核对微信窗口，将上一条记录标记为已发或失败，再恢复会话。",
+  },
+  UNTRUSTED_FAKE_EMBEDDINGS: {
+    label: "知识库仍是测试向量",
+    description: "本地知识库仍使用测试向量，真实发送前会被拦截，避免模型引用不可靠资料。",
+    action: "建议操作：配置真实向量模型并重建知识库，或转人工核对。",
+  },
+  UNTRUSTED_KNOWLEDGE_EMBEDDINGS: {
+    label: "知识库向量未声明可信",
+    description: "本地知识库向量来源未通过可信校验，真实发送前会被拦截。",
+    action: "建议操作：重建可信知识库，确认资料来源后再恢复自动回复。",
+  },
   SEND_UNCERTAIN: {
     label: "发送结果不确定",
     description: "发送动作已触发，但系统无法确认微信窗口中是否真实出现消息。",
@@ -114,6 +129,8 @@ const SEND_STATUS_CATALOG: Record<string, string> = {
   unconfirmed: "发送后未确认",
   not_implemented: "真实发送器未启用",
   pending: "待处理",
+  SEND_BLOCKED: "发送前已拦截",
+  BLOCKED: "已拦截",
   SEND_UNCERTAIN: "发送结果不确定",
   UNCERTAIN: "发送结果不确定",
 }
@@ -121,6 +138,9 @@ const SEND_STATUS_CATALOG: Record<string, string> = {
 const REVIEW_REASON_CATALOG: Record<string, string> = {
   manual_confirmed: "人工确认已发送",
   manual_failed: "人工标记失败",
+  blocked_before_send: "发送前拦截",
+  send_reply: "手动发送",
+  approve_reply_job: "审核后发送",
 }
 
 export default function PendingPage() {
@@ -155,7 +175,7 @@ export default function PendingPage() {
     try {
       const [replies, uncertainSends, recentLogs] = await Promise.all([
         apiClient.listReplyJobs(undefined, 50),
-        apiClient.listUncertainSendJobs(50, sendFilterQuery),
+        apiClient.listUncertainSendJobs(100, sendFilterQuery),
         apiClient.getRecentLogs(5, { only_errors: true }),
       ])
       if (!replies.success || !replies.data) {
@@ -634,15 +654,16 @@ function SendJobCard({
 
 function SendAttemptList({ attempts }: { attempts: SendAttempt[] }) {
   if (!attempts.length) return null
+  const sourceKey = "send_attempts"
   return (
-    <div className="mt-3 rounded-md bg-white px-3 py-2">
-      <div className="mb-2 text-xs font-semibold text-slate-500">send_attempts</div>
+    <div className="mt-3 rounded-md bg-white px-3 py-2" data-source={sourceKey}>
+      <div className="mb-2 text-xs font-semibold text-slate-500">发送记录（{attempts.length} 条）</div>
       <div className="space-y-2">
         {attempts.map((attempt) => (
           <div key={attempt.attempt_id} className="rounded border border-slate-100 bg-slate-50 px-2 py-2">
             <div className="mb-1 flex items-center justify-between gap-2 text-xs">
               <span className="font-semibold text-slate-700">
-                #{attempt.attempt_no} {formatSendStatus(attempt.status)}
+                第 {attempt.attempt_no} 次：{formatSendStatus(attempt.status)}
               </span>
               <span className="text-slate-400">{formatDate(attempt.finished_at ?? attempt.started_at)}</span>
             </div>
@@ -762,8 +783,12 @@ function formatConfirmationEvidence(job: SendJob): ConfirmationEvidence {
   }
 
   const fields = [
+    evidenceField(source, "phase", "拦截阶段", false, formatReviewReason),
+    evidenceField(source, "action", "来源动作", false),
     evidenceField(source, "reason", "原因说明", false, formatReviewReason),
     evidenceField(source, "reason_code", "原因码", false, formatSendErrorCode),
+    evidenceField(source, "knowledge_trust_status", "知识库可信状态", false, formatKnowledgeTrustStatus),
+    evidenceField(source, "embedding_provider", "向量来源", false),
     evidenceField(source, "resolution", "处理结果", false, formatReviewReason),
     evidenceField(source, "visible_messages", "visible_messages", true),
     evidenceField(source, "matched_text", "matched_text", true),
@@ -836,6 +861,14 @@ function formatEvidenceValue(value: unknown): string {
 function formatConfirmationResult(value: SendJob["confirmation_result"]) {
   if (!value) return "待人工检查"
   if (typeof value === "string") return value
+  if (isRecord(value)) {
+    const nested = isRecord(value.confirmation) ? value.confirmation : {}
+    const source = { ...nested, ...value }
+    const reasonCode = formatEvidenceValue(source.reason_code)
+    const phase = formatEvidenceValue(source.phase)
+    if (phase === "blocked_before_send" && reasonCode) return `发送前已拦截：${formatSendErrorCode(reasonCode)}`
+    if (reasonCode) return formatSendErrorCode(reasonCode)
+  }
   return JSON.stringify(value)
 }
 

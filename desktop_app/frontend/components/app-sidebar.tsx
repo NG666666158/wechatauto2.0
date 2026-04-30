@@ -14,11 +14,20 @@ const navItems = [
   { label: "\u8bbe\u7f6e", href: "/settings", icon: Settings },
 ]
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  collapsed?: boolean
+}
+
+export function AppSidebar({ collapsed = false }: AppSidebarProps) {
   const pathname = usePathname()
 
   return (
-    <aside className="w-[168px] shrink-0 bg-[var(--app-sidebar-bg)] px-3 py-2">
+    <aside
+      className={cn(
+        "shrink-0 bg-[var(--app-sidebar-bg)] py-2 transition-[width,padding] duration-300 ease-out",
+        collapsed ? "w-[56px] px-1.5" : "w-[168px] px-3",
+      )}
+    >
       <nav className="flex flex-col gap-2">
         {navItems.map((item) => {
           const Icon = item.icon
@@ -28,15 +37,24 @@ export function AppSidebar() {
             <Link
               key={item.href}
               href={item.href}
+              title={collapsed ? item.label : undefined}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-3 text-[17px] transition-colors",
+                "flex h-12 items-center overflow-hidden rounded-lg text-[17px] transition-[background-color,color,padding,gap] duration-300 ease-out",
+                collapsed ? "justify-center gap-0 px-0" : "gap-3 px-3",
                 active
                   ? "bg-[var(--app-nav-active-bg)] font-bold text-[var(--app-nav-active-text)]"
                   : "font-semibold text-[var(--app-nav-text)] hover:bg-[var(--app-nav-hover-bg)]",
               )}
             >
-              <Icon className="h-6 w-6" strokeWidth={active ? 2.4 : 1.9} />
-              <span>{item.label}</span>
+              <Icon className="h-6 w-6 shrink-0" strokeWidth={active ? 2.4 : 1.9} />
+              <span
+                className={cn(
+                  "whitespace-nowrap transition-[opacity,width,transform] duration-300 ease-out",
+                  collapsed ? "w-0 translate-x-2 opacity-0" : "w-[72px] translate-x-0 opacity-100",
+                )}
+              >
+                {item.label}
+              </span>
             </Link>
           )
         })}

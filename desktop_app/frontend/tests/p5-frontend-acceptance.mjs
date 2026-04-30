@@ -154,7 +154,7 @@ const checks = [
         source.includes("SendUncertainFilter") &&
         source.includes("filteredSendJobs") &&
         source.includes("sendFilterQuery") &&
-        source.includes("listUncertainSendJobs(50, sendFilterQuery") &&
+        source.includes("listUncertainSendJobs(100, sendFilterQuery") &&
         source.includes("全部") &&
         source.includes("仅未确认") &&
         source.includes("仅有错误码") &&

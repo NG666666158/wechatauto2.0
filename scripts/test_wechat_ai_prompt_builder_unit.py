@@ -61,6 +61,7 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("Alice usually wants a short answer first.", prompt)
         self.assertIn("Scene: friend", prompt)
         self.assertIn("Latest message: Can you summarize the plan?", prompt)
+        self.assertIn("Do not use Markdown formatting", prompt)
 
     def test_debug_preview_matches_rendered_prompt(self) -> None:
         builder = PromptBuilder()
@@ -105,6 +106,8 @@ class ReplyEnginePromptBuilderIntegrationTests(unittest.TestCase):
                 contexts: list[str],
                 agent_profile=None,
                 user_profile=None,
+                self_identity_profile=None,
+                self_identity=None,
                 knowledge_chunks=None,
                 memory_summary=None,
             ) -> str:

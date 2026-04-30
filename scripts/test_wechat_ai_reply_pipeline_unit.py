@@ -201,6 +201,33 @@ class ReplyPipelineOrchestrationTests(unittest.TestCase):
         )
         self.assertEqual(logged_events[4]["prompt_preview"], "prompt::hello::Ali...(truncated)")
 
+    def test_generate_reply_formats_markdown_for_wechat(self) -> None:
+        class FakeReplyEngine:
+            def __init__(self) -> None:
+                self.prompt_builder = types.SimpleNamespace(debug_preview=lambda **kwargs: "prompt")
+
+            def generate_friend_reply(self, latest_message: str, contexts: list[str], **kwargs: object) -> str:
+                return "1. **先稳住节奏**\n- 别硬打\n`等队友来`"
+
+        pipeline = ReplyPipeline(
+            provider=object(),
+            prompts=ScenePrompts(friend_system_prompt="friend", group_system_prompt="group"),
+            reply_engine=FakeReplyEngine(),
+            event_logger=None,
+        )
+
+        reply = pipeline.generate_reply(
+            Message(
+                chat_id="alice-chat",
+                chat_type="friend",
+                sender_name="Alice",
+                text="hello",
+                context=[],
+            )
+        )
+
+        self.assertEqual(reply, "1. 先稳住节奏\n别硬打\n等队友来")
+
     def test_generate_reply_passes_self_identity_profile_to_prompt_and_engine(self) -> None:
         class FakeReplyEngine:
             def __init__(self) -> None:
@@ -678,7 +705,7 @@ class WeChatRuntimeReplyPipelineWiringTests(unittest.TestCase):
                 if self.raise_on_generate:
                     raise RuntimeError("provider down")
                 self.messages.append(message)
-                return "pipeline-reply"
+                return "**pipeline-reply**"
 
         engine = FakeEngine()
         app = runtime.WeChatAIApp(

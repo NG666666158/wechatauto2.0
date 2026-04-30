@@ -38,6 +38,16 @@ class FakeDesktopService:
             "paused_sessions": [],
             "whitelist": [],
             "blacklist": [],
+            "model_config": {
+                "provider": "minimax",
+                "minimax": {
+                    "model": "MiniMax-M2.7",
+                    "api_url": "https://api.minimaxi.com/v1/text/chatcompletion_v2",
+                    "timeout": 30.0,
+                    "api_key_set": False,
+                    "api_key_preview": "",
+                },
+            },
             "embedding_config": {
                 "provider": "fake",
                 "base_url": "https://api.openai.com/v1",
@@ -965,6 +975,38 @@ def test_runtime_bootstrap_check_only_preflights_without_starting_daemon() -> No
     assert service.started == 0
 
 
+def test_runtime_bootstrap_check_reports_not_ready_without_http_error() -> None:
+    from wechat_ai.server import create_app
+
+    service = FakeDesktopService()
+    service.bootstrap_result = {
+        "ok": False,
+        "wechat_started": True,
+        "narrator_started": True,
+        "ui_ready": False,
+        "guardian_started": False,
+        "narrator_stopped": False,
+        "attempts": 20,
+        "message": "未识别到微信主界面，请扫码登录后重试。",
+        "guardian_command": [],
+        "guardian_exit_code": None,
+        "status_lines": ["等待微信主界面可识别。"],
+        "environment": {"wechat_running": True, "narrator_required": True, "ui_ready": False},
+    }
+    client = TestClient(create_app(desktop_service=service))
+
+    response = client.post("/api/v1/runtime/bootstrap-check", json={"mode": "global"})
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["success"] is True
+    assert payload["data"]["running"] is False
+    assert payload["data"]["bootstrap"]["ok"] is False
+    assert payload["data"]["bootstrap"]["message"] == "未识别到微信主界面，请扫码登录后重试。"
+    assert service.bootstrap_calls == 1
+    assert service.started == 0
+
+
 def test_runtime_bootstrap_start_returns_wechat_window_error_when_preflight_fails() -> None:
     from wechat_ai.server import create_app
 
@@ -1556,7 +1598,15 @@ def test_frontend_dashboard_and_settings_endpoints_are_available() -> None:
         "pending_send_uncertain": 1,
     }
     assert settings["data"]["auto_reply_enabled"] is True
+    assert settings["data"]["model_config"]["minimax"]["model"] == "MiniMax-M2.7"
     assert updated["data"]["auto_reply_enabled"] is False
+
+    model_updated = client.patch(
+        "/api/v1/settings",
+        json={"model_config": {"provider": "minimax", "minimax": {"api_key": "dummy-minimax-key"}}},
+    ).json()
+    assert model_updated["success"] is True
+    assert service.settings["model_config"]["minimax"]["api_key"] == "dummy-minimax-key"  # type: ignore[index]
 
 
 def test_settings_endpoint_round_trips_safety_policy() -> None:
@@ -1893,6 +1943,7 @@ def main() -> None:
     test_runtime_actions_publish_runtime_status_events()
     test_runtime_bootstrap_start_endpoint_runs_bootstrap_before_starting_daemon()
     test_runtime_bootstrap_check_only_preflights_without_starting_daemon()
+    test_runtime_bootstrap_check_reports_not_ready_without_http_error()
     test_runtime_bootstrap_start_returns_wechat_window_error_when_preflight_fails()
     test_runtime_pause_returns_paused_state()
     test_shell_tray_state_endpoint_is_available()

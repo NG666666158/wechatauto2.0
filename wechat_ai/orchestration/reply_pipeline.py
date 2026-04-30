@@ -6,6 +6,7 @@ from wechat_ai.logging_utils import JsonlEventLogger, sanitize_text
 from wechat_ai.models import Message
 from wechat_ai.orchestration.context_manager import ContextManager
 from wechat_ai.orchestration.message_parser import MessageParser
+from wechat_ai.orchestration.reply_formatter import format_reply_for_wechat
 from wechat_ai.reply_engine import ReplyEngine, ScenePrompts
 from wechat_ai.self_identity import SelfIdentityResolver
 
@@ -111,6 +112,7 @@ class ReplyPipeline:
                 knowledge_chunks=knowledge_chunks,
                 memory_summary=memory_summary,
             )
+        reply = format_reply_for_wechat(reply)
         self._log_event(
             "model_completed",
             chat_id=prepared_message.chat_id,

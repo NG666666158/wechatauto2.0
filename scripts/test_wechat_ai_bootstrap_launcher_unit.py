@@ -510,6 +510,81 @@ class WeChatBootstrapperTests(unittest.TestCase):
         self.assertEqual(calls[1][:3], ["powershell", "-NoProfile", "-Command"])
         self.assertTrue(calls[1][3].startswith("Get-Process"))
 
+    def test_packaged_probe_detects_wechat_with_process_fallback(self) -> None:
+        import wechat_ai.app.bootstrap_probe_runner as module
+
+        original_pyweixin = sys.modules.get("pyweixin")
+        original_is_process_running = module.is_process_running
+        sys.modules["pyweixin"] = SimpleNamespace(Tools=SimpleNamespace(is_weixin_running=lambda: False))
+        module.is_process_running = lambda name: name == "WeChatAppEx.exe"
+        try:
+            self.assertTrue(module._is_wechat_running())
+        finally:
+            module.is_process_running = original_is_process_running
+            if original_pyweixin is None:
+                sys.modules.pop("pyweixin", None)
+            else:
+                sys.modules["pyweixin"] = original_pyweixin
+
+    def test_packaged_probe_window_check_uses_process_fallback(self) -> None:
+        import wechat_ai.app.bootstrap_probe_runner as module
+
+        original_pyweixin = sys.modules.get("pyweixin")
+        original_wechat_tools = sys.modules.get("pyweixin.WeChatTools")
+        original_is_process_running = module.is_process_running
+        fake_wx = SimpleNamespace(find_wx_window=lambda: 123)
+        sys.modules["pyweixin"] = SimpleNamespace(Tools=SimpleNamespace(is_weixin_running=lambda: False))
+        sys.modules["pyweixin.WeChatTools"] = SimpleNamespace(wx=fake_wx)
+        module.is_process_running = lambda name: name == "Weixin.exe"
+        try:
+            self.assertTrue(module._is_wechat_window_available())
+        finally:
+            module.is_process_running = original_is_process_running
+            if original_pyweixin is None:
+                sys.modules.pop("pyweixin", None)
+            else:
+                sys.modules["pyweixin"] = original_pyweixin
+            if original_wechat_tools is None:
+                sys.modules.pop("pyweixin.WeChatTools", None)
+            else:
+                sys.modules["pyweixin.WeChatTools"] = original_wechat_tools
+
+    def test_packaged_probe_treats_pyweixin_functional_checks_as_ready(self) -> None:
+        import wechat_ai.app.bootstrap_probe_runner as module
+
+        original_pyweixin = sys.modules.get("pyweixin")
+        original_wechat_tools = sys.modules.get("pyweixin.WeChatTools")
+        fake_wx = SimpleNamespace(
+            hwnd=999,
+            possible_windows=[999],
+            window_type=0,
+            find_wx_window=lambda: 0,
+        )
+        fake_navigator = SimpleNamespace(open_weixin=lambda **kwargs: (_ for _ in ()).throw(RuntimeError("window not found")))
+        fake_desktop = SimpleNamespace(window=lambda **kwargs: SimpleNamespace())
+        fake_contacts = SimpleNamespace(check_my_info=lambda **kwargs: {"nickname": "me"})
+        fake_messages = SimpleNamespace(
+            dump_recent_sessions=lambda **kwargs: [{"name": "Alice"}],
+            check_new_messages=lambda **kwargs: [],
+        )
+        sys.modules["pyweixin"] = SimpleNamespace(Contacts=fake_contacts, Messages=fake_messages)
+        sys.modules["pyweixin.WeChatTools"] = SimpleNamespace(Navigator=fake_navigator, desktop=fake_desktop, wx=fake_wx)
+        try:
+            result = module._ui_ready_check()
+        finally:
+            if original_pyweixin is None:
+                sys.modules.pop("pyweixin", None)
+            else:
+                sys.modules["pyweixin"] = original_pyweixin
+            if original_wechat_tools is None:
+                sys.modules.pop("pyweixin.WeChatTools", None)
+            else:
+                sys.modules["pyweixin.WeChatTools"] = original_wechat_tools
+
+        self.assertTrue(result["ready"])
+        self.assertTrue(result["checks"]["functional_ready"])
+        self.assertIn("my_profile", result["checks"]["functional_checks"])
+
 
 if __name__ == "__main__":
     unittest.main()

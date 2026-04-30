@@ -80,7 +80,22 @@ export default function HomePage() {
       setBackendReady(false)
       setError(err instanceof Error ? err.message : "无法连接本地后端服务")
     })
-  }, [])
+  }, [loadHomeData])
+
+  useEffect(() => {
+    if (!backendReady) return
+    const refresh = () => {
+      void loadHomeData().catch(() => undefined)
+    }
+    const timer = window.setInterval(refresh, 5000)
+    window.addEventListener("focus", refresh)
+    document.addEventListener("visibilitychange", refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener("focus", refresh)
+      document.removeEventListener("visibilitychange", refresh)
+    }
+  }, [backendReady, loadHomeData])
 
   useEffect(() => {
     setCurrentTime(formatClock(new Date()))
@@ -124,6 +139,9 @@ export default function HomePage() {
         return
       }
       if (action === "check") {
+        if (!confirmWechatDetection()) {
+          return
+        }
         setEnvironmentChecked(false)
         const result = await apiClient.bootstrapCheckRuntime()
         if (!result.success) {
@@ -155,7 +173,7 @@ export default function HomePage() {
           setError("请先检测微信环境，确认窗口和停止入口可用后再开始自动回复。")
           return
         }
-        if (!window.confirm("确认开始自动回复后，程序会开始轮询微信消息，并可能短暂接管微信窗口。确认继续吗？")) {
+        if (!confirmAutoReplyStart()) {
           return
         }
       }
@@ -476,6 +494,44 @@ function formatActivityText(eventType: string, log: RecentLogEvent) {
   if (rawMessage && !rawMessage.includes("_")) return rawMessage
   if (exceptionMessage) return `运行异常：${exceptionMessage}`
   return normalizedType.replaceAll("_", " ")
+}
+
+function confirmWechatDetection() {
+  return window.confirm(
+    [
+      "即将检测微信环境。",
+      "",
+      "检测过程中可能会拉起 Windows 讲述人，也可能会唤起微信登录或微信主窗口。",
+      "如果本次检测启动了讲述人，检测通过后程序会自动关闭讲述人。",
+      "",
+      "请保持微信已登录或准备扫码登录，并避免在检测过程中操作鼠标键盘。",
+    ].join("\n"),
+  )
+}
+
+function confirmAutoReplyStart() {
+  const confirmations = [
+    [
+      "启动自动回复前提醒 1/3",
+      "",
+      "接下来程序会读取微信窗口并占用鼠标和键盘，用于定位会话、读取消息和执行回复流程。",
+      "启动后请不要手动抢占微信窗口，避免识别错误。",
+    ].join("\n"),
+    [
+      "启动自动回复前提醒 2/3",
+      "",
+      "确认后会拉起本地轮询脚本，脚本会持续检查微信新消息并调用大模型生成回复。",
+      "桌面端仍会记录运行状态、回复统计和待处理事项。",
+    ].join("\n"),
+    [
+      "启动自动回复前提醒 3/3",
+      "",
+      "优先使用首页的“停止自动回复”按钮结束运行。",
+      "紧急情况下可按 Ctrl+Shift+F12 强制停止轮询脚本。",
+      "关闭窗口只会退到后台，右下角托盘菜单可完全退出。",
+    ].join("\n"),
+  ]
+  return confirmations.every((message) => window.confirm(message))
 }
 
 function formatClock(value: Date) {

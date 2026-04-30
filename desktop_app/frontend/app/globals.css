@@ -208,5 +208,20 @@
   }
   body {
     @apply bg-background text-foreground;
+    overflow: hidden;
   }
+}
+
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag,
+a,
+button,
+input,
+textarea,
+select,
+[role='button'] {
+  -webkit-app-region: no-drag;
 }

@@ -3,12 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from wechat_ai.app.embedding_config import DesktopEmbeddingConfig
+from wechat_ai.app.model_config import DesktopModelConfig
 from wechat_ai.safety import SafetyPolicyConfig, default_safety_policy_config
 
 
 @dataclass(slots=True)
 class WorkHours:
     enabled: bool = True
+    start_day: str = "mon"
+    end_day: str = "fri"
     start: str = "09:00"
     end: str = "18:00"
 
@@ -52,6 +55,7 @@ class SettingsSnapshot:
     request_timeout_seconds: float = 30.0
     retry_attempts: int = 2
     real_send_enabled: bool = False
+    model_config: DesktopModelConfig = field(default_factory=DesktopModelConfig)
     embedding_config: DesktopEmbeddingConfig = field(default_factory=DesktopEmbeddingConfig)
     safety_policy: SafetyPolicyConfig = field(default_factory=default_safety_policy_config)
 

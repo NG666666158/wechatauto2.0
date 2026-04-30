@@ -244,6 +244,28 @@ export type EmbeddingConfigPatch = Partial<Omit<EmbeddingConfig, "api_key_set" |
   api_key?: string
 }
 
+export type MiniMaxModelConfig = {
+  model: string
+  api_url: string
+  timeout: number
+  api_key_set: boolean
+  api_key_preview: string
+}
+
+export type ModelConfig = {
+  provider: "minimax"
+  minimax: MiniMaxModelConfig
+}
+
+export type MiniMaxModelConfigPatch = Partial<Omit<MiniMaxModelConfig, "api_key_set" | "api_key_preview">> & {
+  api_key?: string
+}
+
+export type ModelConfigPatch = {
+  provider?: "minimax"
+  minimax?: MiniMaxModelConfigPatch
+}
+
 export type KnowledgeNormalizePreviewRequest = {
   text: string
   title?: string
@@ -319,6 +341,8 @@ export type SendJobListFilters = {
 
 export type WorkHours = {
   enabled: boolean
+  start_day: string
+  end_day: string
   start: string
   end: string
 }
@@ -382,6 +406,7 @@ export type Settings = {
   request_timeout_seconds: number
   retry_attempts: number
   real_send_enabled: boolean
+  model_config: ModelConfig
   embedding_config: EmbeddingConfig
   safety_policy: SafetyPolicyConfig
 }
@@ -390,9 +415,10 @@ export type SettingsPatch = Partial<
   Omit<
     Settings,
     | "safety_policy"
+    | "model_config"
     | "embedding_config"
   >
-> & { safety_policy?: SafetyPolicyPatch; embedding_config?: EmbeddingConfigPatch }
+> & { safety_policy?: SafetyPolicyPatch; model_config?: ModelConfigPatch; embedding_config?: EmbeddingConfigPatch }
 
 export type PrivacyPolicyPatch = Partial<PrivacyPolicy>
 

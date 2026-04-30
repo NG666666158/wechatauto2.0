@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import shutil
 import sys
@@ -55,6 +56,35 @@ class ProfileConfigTests(unittest.TestCase):
         self.assertEqual(settings.user_profile_dir, ROOT / "tmp-users")
         self.assertEqual(settings.agent_profile_dir, ROOT / "tmp-agents")
         self.assertFalse(settings.profile_auto_create)
+
+    def test_minimax_settings_loads_desktop_model_config_when_env_key_missing(self) -> None:
+        tmpdir = self.make_temp_dir()
+        settings_path = tmpdir / "app" / "desktop_settings.json"
+        settings_path.parent.mkdir(parents=True)
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "model_config": {
+                        "provider": "minimax",
+                        "minimax": {
+                            "api_key": "dummy-file-key",
+                            "model": "MiniMax-M2.7",
+                            "api_url": "https://minimax.example/v1",
+                            "timeout": 12,
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        with patch.dict(os.environ, {"WECHAT_AI_DATA_DIR": str(tmpdir)}, clear=True):
+            config = self.load_config()
+            settings = config.MiniMaxSettings.from_env()
+
+        self.assertEqual(settings.api_key, "dummy-file-key")
+        self.assertEqual(settings.model, "MiniMax-M2.7")
+        self.assertEqual(settings.api_url, "https://minimax.example/v1")
+        self.assertEqual(settings.timeout, 12)
 
     def test_profile_store_uses_profile_auto_create_env_by_default(self) -> None:
         tmpdir = self.make_temp_dir()

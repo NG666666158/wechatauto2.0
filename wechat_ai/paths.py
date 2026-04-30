@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data"
+DATA_DIR = Path(os.getenv("WECHAT_AI_DATA_DIR", str(ROOT / "data"))).expanduser()
 USERS_DIR = DATA_DIR / "users"
 AGENTS_DIR = DATA_DIR / "agents"
 SELF_IDENTITY_DIR = DATA_DIR / "self_identity"

@@ -9,6 +9,9 @@ type ElectronShellApi = {
   getPreferences: () => Promise<DesktopShellPreferences>
   updatePreferences: (patch: DesktopShellPatch) => Promise<DesktopShellPreferences>
   ensureBackend?: () => Promise<DesktopBackendSession>
+  minimizeWindow?: () => Promise<boolean>
+  toggleMaximizeWindow?: () => Promise<boolean>
+  closeWindowToTray?: () => Promise<boolean>
   selectKnowledgeFiles?: () => Promise<string[]>
   getPathForFile?: (file: File) => string
 }
@@ -50,6 +53,24 @@ export function getDesktopShellBridge() {
         return null
       }
       return bridge.ensureBackend()
+    },
+    async minimizeWindow(): Promise<boolean> {
+      if (!bridge?.minimizeWindow) {
+        return false
+      }
+      return Boolean(await bridge.minimizeWindow())
+    },
+    async toggleMaximizeWindow(): Promise<boolean> {
+      if (!bridge?.toggleMaximizeWindow) {
+        return false
+      }
+      return Boolean(await bridge.toggleMaximizeWindow())
+    },
+    async closeWindowToTray(): Promise<boolean> {
+      if (!bridge?.closeWindowToTray) {
+        return false
+      }
+      return Boolean(await bridge.closeWindowToTray())
     },
     async selectKnowledgeFiles(): Promise<string[]> {
       if (!bridge?.selectKnowledgeFiles) {

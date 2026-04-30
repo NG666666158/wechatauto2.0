@@ -66,6 +66,7 @@ P8 验收相关文档：
 - [docs/p8-runbook.md](./docs/p8-runbook.md)
 - [docs/p8-long-run-report-template.md](./docs/p8-long-run-report-template.md)
 - [docs/p8-release-checklist.md](./docs/p8-release-checklist.md)
+- [docs/desktop-client-test-build-2026-04-30.md](./docs/desktop-client-test-build-2026-04-30.md)
 
 ## 仓库结构
 

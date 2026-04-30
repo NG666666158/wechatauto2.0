@@ -193,6 +193,7 @@ export default function MessagesPage() {
 }
 
 function ConversationRow({ item, active, onClick }: { item: ConversationListItem; active: boolean; onClick: () => void }) {
+  const recordCount = Math.max(Number(item.unread_count || 0), 0)
   return (
     <li
       onClick={onClick}
@@ -202,15 +203,13 @@ function ConversationRow({ item, active, onClick }: { item: ConversationListItem
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-sm font-medium text-slate-800">{item.title}</span>
-          <span className="shrink-0 text-xs text-slate-400 tabular-nums">{formatTime(item.updated_at)}</span>
+          <div className="flex shrink-0 items-center gap-2">
+            {recordCount ? <span className="text-[11px] font-medium text-slate-400">记录 {recordCount} 条</span> : null}
+            <span className="text-xs text-slate-400 tabular-nums">{formatTime(item.updated_at)}</span>
+          </div>
         </div>
-        <div className="mt-1 flex items-center justify-between gap-2">
+        <div className="mt-1 min-w-0">
           <span className="truncate text-xs text-slate-500">{item.latest_message}</span>
-          {item.unread_count ? (
-            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-medium text-white">
-              {item.unread_count}
-            </span>
-          ) : null}
         </div>
       </div>
     </li>

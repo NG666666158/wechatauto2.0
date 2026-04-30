@@ -107,7 +107,8 @@ class PromptBuilder:
             f"Scene: {scene}\n"
             f"Latest message: {latest_message}\n"
             "Follow the Self Identity Summary as who you are, and follow the User Profile Summary as who the other person is.\n"
-            "Write a direct Chinese WeChat reply with no extra explanation."
+            "Write a direct Chinese WeChat reply with no extra explanation.\n"
+            "Do not use Markdown formatting: no headings, no bold markers, no bullet lists, no code blocks, and no table syntax."
         )
 
     def _render_memory_summary(self, memory_summary: str | None) -> str:
